@@ -1,0 +1,20 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!--
+      NU1510: NuGet package pruning flags Microsoft.Extensions.DependencyInjection as redundant
+      because it ships in the ASP.NET Core / worker shared framework. It is kept as an explicit
+      PackageReference per the project's approved package list, so the warning is expected here.
+    -->
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
+  </PropertyGroup>
+
+</Project>

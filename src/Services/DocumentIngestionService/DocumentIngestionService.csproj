@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <UserSecretsId>dotnet-DocumentIngestionService-027fd285-c459-46d7-a15f-9e63bd84403e</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\BuildingBlocks\SharedKernel\SharedKernel.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\Contracts\Contracts.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\Common\Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+  </ItemGroup>
+</Project>
