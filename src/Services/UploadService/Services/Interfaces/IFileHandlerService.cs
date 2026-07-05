@@ -1,0 +1,12 @@
+/// <summary>
+/// Interface for handling file upload operations.
+/// </summary>
+public interface IFileHandlerService
+{
+    /// <summary>
+    /// Handles the file upload process asynchronously.
+    /// </summary>
+    /// <param name="file">The file to upload.</param>
+    /// <returns>A tuple indicating the success of the operation and a message.</returns>
+    Task<(bool IsSuccess, string Message)> HandleFileUploadAsync(IFormFile file);
+}
