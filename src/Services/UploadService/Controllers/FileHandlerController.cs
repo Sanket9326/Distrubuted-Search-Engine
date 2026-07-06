@@ -28,11 +28,11 @@ public class FileHandlerController : ControllerBase
 
         if (result.IsSuccess)
         {
-            return Ok(result.Message);
+            return Ok(result.Event);
         }
         else
         {
-            return StatusCode(500, result.Message);
+            return StatusCode(500, "Failed to upload file.");
         }
     }
 }
