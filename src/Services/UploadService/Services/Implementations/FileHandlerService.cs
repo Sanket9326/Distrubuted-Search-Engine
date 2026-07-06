@@ -1,12 +1,25 @@
+using Contracts.Events;
+using Infrastructure;
+using SharedKernel;
+
 public class FileHandlerService : IFileHandlerService
 {
-    public async Task<(bool IsSuccess, string Message)> HandleFileUploadAsync(IFormFile file)
+    private readonly ILogger<FileHandlerService> _logger;
+    private readonly IKafkaProducer _kafkaProducer;
+
+    public FileHandlerService(ILogger<FileHandlerService> logger, IKafkaProducer kafkaProducer)
+    {
+        _logger = logger;
+        _kafkaProducer = kafkaProducer;
+    }
+
+    public async Task<(bool IsSuccess, DocumentUploadedEvent Event)> HandleFileUploadAsync(IFormFile file)
     {
         try
         {
             var storagePath = Path.Combine(
-                     Directory.GetCurrentDirectory(),
-                     "Storage");
+                    Directory.GetCurrentDirectory(),
+                    "Storage");
 
             Directory.CreateDirectory(storagePath);
 
@@ -17,11 +30,22 @@ public class FileHandlerService : IFileHandlerService
                 await file.CopyToAsync(stream);
             }
 
-            return (true, "File uploaded successfully.");
+            var documentEvent = new DocumentUploadedEvent
+            {
+                FileName = file.FileName,
+                FilePath = filePath,
+                ContentType = file.ContentType,
+                UploadedAtUtc = DateTime.UtcNow
+            };
+
+            await _kafkaProducer.PublishAsync(Constants.KafkaTopics.DocumentIngestion, documentEvent);
+
+            return (true, documentEvent);
         }
         catch (Exception ex)
         {
-            return (false, $"File upload failed: {ex.Message}");
+            _logger.LogError(ex, "Failed to handle file upload for {FileName}", file.FileName);
+            return (false, new DocumentUploadedEvent());
         }
     }
 }
