@@ -11,6 +11,9 @@ builder.Services.Configure<KafkaSettings>(builder.Configuration.GetSection(Kafka
 builder.Services.AddSingleton<IKafkaProducer, KafkaProducerService>();
 builder.Services.AddHostedService<KafkaTopicInitializer>();
 
+builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection(MinioSettings.SectionName));
+builder.Services.AddSingleton<IMinioStorage, MinioStorageService>();
+
 builder.Services.AddControllers();
 builder.Services.AddSingleton<IFileHandlerService, FileHandlerService>();
 var app = builder.Build();
