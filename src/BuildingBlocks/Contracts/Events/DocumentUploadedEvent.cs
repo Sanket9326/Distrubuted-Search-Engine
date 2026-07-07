@@ -2,11 +2,9 @@ namespace Contracts.Events;
 
 public sealed class DocumentUploadedEvent
 {
-    public Guid DocumentId { get; init; } = Guid.NewGuid();
+    public string DocumentId { get; init; } = string.Empty;
 
     public string FileName { get; init; } = string.Empty;
-
-    public string FilePath { get; init; } = string.Empty;
 
     public string ContentType { get; init; } = string.Empty;
 

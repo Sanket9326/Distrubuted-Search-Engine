@@ -6,34 +6,28 @@ public class FileHandlerService : IFileHandlerService
 {
     private readonly ILogger<FileHandlerService> _logger;
     private readonly IKafkaProducer _kafkaProducer;
+    private readonly IMinioStorage _minioStorage;
 
-    public FileHandlerService(ILogger<FileHandlerService> logger, IKafkaProducer kafkaProducer)
+    public FileHandlerService(ILogger<FileHandlerService> logger, IKafkaProducer kafkaProducer, IMinioStorage minioStorage)
     {
         _logger = logger;
         _kafkaProducer = kafkaProducer;
+        _minioStorage = minioStorage;
     }
 
     public async Task<(bool IsSuccess, DocumentUploadedEvent Event)> HandleFileUploadAsync(IFormFile file)
     {
         try
         {
-            var storagePath = Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    "Storage");
+            var objectName = $"{Guid.NewGuid()}-{file.FileName}";
 
-            Directory.CreateDirectory(storagePath);
-
-            var filePath = Path.Combine(storagePath, file.FileName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
+            using var stream = file.OpenReadStream();
+            var storedObjectName = await _minioStorage.UploadFileAsync(objectName, stream, file.Length, file.ContentType);
 
             var documentEvent = new DocumentUploadedEvent
             {
+                DocumentId = objectName,
                 FileName = file.FileName,
-                FilePath = filePath,
                 ContentType = file.ContentType,
                 UploadedAtUtc = DateTime.UtcNow
             };
