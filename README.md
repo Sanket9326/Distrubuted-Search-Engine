@@ -1,340 +1,339 @@
-# 🚀 Document Search Platform
+````markdown
+<div align="center">
 
-> A production-inspired, microservice-based distributed document search platform built with **.NET 10**, designed to evolve into a scalable **hybrid keyword + semantic search engine**.
+<img src="https://capsule-render.vercel.app/api?type=waving&height=230&color=0:0F2027,50:203A43,100:00C9A7&text=Distributed%20Search%20Engine&fontColor=ffffff&fontSize=48&fontAlignY=38&desc=Building%20a%20Production-Inspired%20Hybrid%20Search%20Platform&descAlignY=58&descSize=18&animation=fadeIn"/>
 
-The platform follows an event-driven architecture where documents are uploaded, stored in object storage, processed asynchronously, indexed, and made searchable through both traditional information retrieval techniques and AI-powered semantic search.
+<p>
+<a href="https://github.com/Sanket9326">
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&pause=1200&color=00C9A7&center=true&vCenter=true&width=850&lines=Upload+%E2%86%92+Store+%E2%86%92+Publish+%E2%86%92+Ingest+%E2%86%92+Search;Distributed+Microservices+Built+with+.NET+10;Apache+Kafka+%7C+PostgreSQL+%7C+MinIO;Future%3A+BM25+%7C+Vector+Search+%7C+Hybrid+Retrieval+%7C+RAG" />
+</a>
+</p>
 
----
+![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)
+![Kafka](https://img.shields.io/badge/Apache%20Kafka-Event%20Streaming-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![MinIO](https://img.shields.io/badge/MinIO-Object%20Storage-C72E49?style=for-the-badge&logo=minio&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
-# ✨ Vision
-
-The goal of this project is to build a search platform that demonstrates how modern search engines are designed and implemented.
-
-The platform will progressively evolve from a simple document upload service into a distributed search system featuring:
-
-* Keyword Search
-* Full-text Search
-* BM25 Ranking
-* Inverted Indexes
-* Distributed Indexing
-* Semantic Search
-* Vector Embeddings
-* Hybrid Search
-* Retrieval-Augmented Generation (RAG)
-
-Rather than being a tutorial project, this repository is intended to resemble the architecture and engineering practices used in production systems.
+</div>
 
 ---
 
-# 🏗️ High-Level Architecture
+# 🚀 Overview
 
-```text
-                   +----------------------+
-                   |      Client/API      |
-                   +----------+-----------+
-                              |
-                              v
-                  +-------------------------+
-                  |     Upload Service      |
-                  +-----------+-------------+
-                              |
-          +-------------------+-------------------+
-          |                                       |
-          v                                       v
- +--------------------+                 +--------------------+
- |       MinIO        |                 |    PostgreSQL      |
- | Object Storage     |                 | Document Metadata  |
- +--------------------+                 +--------------------+
-                              |
-                              |
-                              v
-                      +---------------+
-                      |     Kafka     |
-                      +-------+-------+
-                              |
-                              v
-             +----------------------------------+
-             | Document Ingestion Service       |
-             | Extract • Parse • Process        |
-             +---------------+------------------+
-                             |
-                             v
-                     Search Index (Future)
-                             |
-                             v
-                     Search API (Future)
+**Distributed Search Engine** is a production-inspired search platform built with **.NET 10** using an **event-driven microservice architecture**.
+
+The platform starts with document uploads and progressively evolves into a complete distributed search engine featuring:
+
+- 🔍 Keyword Search
+- 📖 Full-text Search
+- ⚡ BM25 Ranking
+- 📂 Distributed Indexing
+- 🧠 Semantic Search
+- 🤖 Vector Embeddings
+- 🔄 Hybrid Retrieval
+- 💬 Retrieval-Augmented Generation (RAG)
+
+The objective is to build every major search engine component from scratch instead of relying on existing search platforms.
+
+---
+
+# ✨ Current Features
+
+| Feature | Status |
+|---------|:------:|
+| 📤 Upload Documents | ✅ |
+| 🪣 Store in MinIO | ✅ |
+| 📣 Kafka Event Publishing | ✅ |
+| ⚙️ Worker Service | 🚧 |
+| 🗄 PostgreSQL Metadata | 🚧 |
+| 🔍 Search API | ⏳ |
+| 🧠 Semantic Search | ⏳ |
+
+---
+
+# 🏛 Architecture
+
+```mermaid
+flowchart LR
+
+Client([Client])
+
+API[Upload Service]
+
+MinIO[(MinIO)]
+
+Kafka[/Apache Kafka/]
+
+Worker[Document Ingestion]
+
+Postgres[(PostgreSQL)]
+
+Index[(Search Index)]
+
+SearchAPI[Search API]
+
+Client -->|Upload| API
+
+API -->|Store Document| MinIO
+
+API -->|Publish Event| Kafka
+
+Kafka --> Worker
+
+Worker --> Postgres
+
+Worker --> Index
+
+Index --> SearchAPI
+
+SearchAPI --> Client
+
+style API fill:#00c9a7,color:#000
+style Worker fill:#203A43,color:#fff
+style Kafka fill:#231F20,color:#fff
+style MinIO fill:#C72E49,color:#fff
+style Postgres fill:#4169E1,color:#fff
 ```
 
 ---
 
-# 📦 Technology Stack
-
-## Backend
-
-* .NET 10
-* ASP.NET Core Web API
-* Worker Services
-* C#
-
-## Messaging
-
-* Apache Kafka
-
-## Storage
-
-* PostgreSQL
-* MinIO (S3-compatible Object Storage)
-
-## Containerization
-
-* Docker
-* Docker Compose
-
-## Future Technologies
-
-* Redis
-* Elasticsearch-like Inverted Index
-* Vector Database
-* OpenTelemetry
-* Prometheus
-* Grafana
-
----
-
-# 📂 Repository Structure
+# 🔄 Upload Flow
 
 ```text
-DocumentSearchPlatform
-│
-├── src
-│   ├── BuildingBlocks
-│   │   ├── SharedKernel
-│   │   ├── Contracts
-│   │   ├── Infrastructure
-│   │   └── Common
-│   │
-│   ├── Services
-│   │   ├── UploadService
-│   │   └── DocumentIngestionService
-│   │
-│   └── Tests
-│       ├── UploadService.Tests
-│       └── DocumentIngestionService.Tests
-│
-├── infrastructure
-│   ├── docker-compose.yml
-│   └── .env.example
-│
-├── docs
-│
-└── README.md
+          Upload File
+                │
+                ▼
+      ASP.NET Core API
+                │
+                ▼
+      Store File in MinIO
+                │
+                ▼
+ Publish DocumentUploadedEvent
+                │
+                ▼
+         Apache Kafka
+                │
+                ▼
+ Document Ingestion Service
+                │
+                ▼
+ Store Metadata (PostgreSQL)
+                │
+                ▼
+     Future Search Index
 ```
 
 ---
 
-# 📚 Building Blocks
+# 🧠 Future Search Pipeline
 
-## SharedKernel
+```text
+PDF / DOCX / TXT
 
-Contains domain primitives shared across all services.
+        │
 
-Examples:
+        ▼
 
-* BaseEntity
-* Result<T>
-* Error
-* Domain Exceptions
+ Text Extraction
 
----
+        │
 
-## Contracts
+        ▼
 
-Contains communication contracts shared between services.
+ Tokenization
 
-Examples:
+        │
 
-* Kafka Events
-* Integration Events
-* Shared DTOs
+        ▼
 
----
+ Stop-word Removal
 
-## Infrastructure
+        │
 
-Provides reusable infrastructure abstractions.
+        ▼
 
-Examples:
+ Stemming
 
-* Kafka Producer
-* Kafka Consumer
-* MinIO Client
-* File Storage
-* Clock
-* Configuration
+        │
 
----
+        ▼
 
-## Common
+ Inverted Index
 
-Contains cross-cutting functionality used across services.
+        │
 
-Examples:
+        ▼
 
-* Middleware
-* Logging
-* Correlation IDs
-* Extensions
-* Health Checks
+ BM25 Ranking
 
----
+        │
 
-# 🚀 Services
+        ▼
 
-## Upload Service
+ Embedding Generation
 
-Responsible for receiving document uploads.
+        │
 
-Responsibilities:
+        ▼
 
-* Validate uploaded files
-* Store files in MinIO
-* Save document metadata
-* Publish upload events to Kafka
+ Vector Search
+
+        │
+
+        ▼
+
+ Hybrid Ranking
+
+        │
+
+        ▼
+
+ Search Results
+```
 
 ---
 
-## Document Ingestion Service
+# 🏗 Repository Structure
 
-Consumes upload events and prepares documents for indexing.
-
-Responsibilities:
-
-* Download documents from MinIO
-* Extract text
-* Parse documents
-* Build search indexes
-* Generate embeddings (future)
-
----
-
-# 🛣️ Development Roadmap
-
-## ✅ Phase 1 — Document Upload
-
-* Upload API
-* Local File Storage
-* MinIO Integration
-* PostgreSQL Metadata
-* Kafka Event Publishing
+```text
+src
+│
+├── BuildingBlocks
+│   ├── SharedKernel
+│   ├── Contracts
+│   ├── Infrastructure
+│   └── Common
+│
+├── Services
+│   ├── UploadService
+│   └── DocumentIngestionService
+│
+├── Tests
+│   ├── UploadService.Tests
+│   └── DocumentIngestionService.Tests
+│
+└── docker-compose.yml
+```
 
 ---
 
-## 🚧 Phase 2 — Document Ingestion
+# 🛠 Tech Stack
 
-* Kafka Consumer
-* File Download
-* Text Extraction
-* Parsing Pipeline
-* Metadata Enrichment
-
----
-
-## ⏳ Phase 3 — Keyword Search Engine
-
-* Tokenization
-* Stop Word Removal
-* Stemming
-* Inverted Index
-* Boolean Search
-* Phrase Search
-* Prefix Search
+| Layer | Technology |
+|--------|------------|
+| Language | C# |
+| Framework | .NET 10 |
+| Messaging | Apache Kafka |
+| Database | PostgreSQL |
+| Object Storage | MinIO |
+| Containerization | Docker |
+| Architecture | Microservices |
+| Communication | Event-Driven |
+| Future Search | BM25 |
+| Future AI | Vector Search + RAG |
 
 ---
 
-## ⏳ Phase 4 — Ranking
+# 🎯 Design Principles
 
-* TF
-* IDF
-* TF-IDF
-* BM25
-* Top-K Retrieval
-
----
-
-## ⏳ Phase 5 — Distributed Search
-
-* Sharding
-* Replication
-* Query Fan-out
-* Fault Tolerance
-* Distributed Index Updates
+- Clean Architecture
+- Event-Driven Design
+- SOLID Principles
+- Dependency Injection
+- Interface-Based Infrastructure
+- Asynchronous Processing
+- Loose Coupling
+- High Cohesion
+- Production-Inspired Engineering
 
 ---
 
-## ⏳ Phase 6 — Semantic Search
+# 🗺 Roadmap
 
-* Embedding Generation
-* Vector Storage
-* Hybrid Search
-* Re-ranking
-* Retrieval-Augmented Generation (RAG)
+## Phase 1 — Upload Platform
+
+- [x] Upload API
+- [x] MinIO Storage
+- [x] Kafka Producer
+- [x] Docker Infrastructure
+
+## Phase 2 — Document Processing
+
+- [ ] Kafka Consumer
+- [ ] Metadata Storage
+- [ ] Text Extraction
+- [ ] Parsing Pipeline
+
+## Phase 3 — Search Engine
+
+- [ ] Tokenization
+- [ ] Stop-word Removal
+- [ ] Inverted Index
+- [ ] Boolean Search
+- [ ] Phrase Search
+- [ ] Prefix Search
+
+## Phase 4 — Ranking
+
+- [ ] TF
+- [ ] IDF
+- [ ] TF-IDF
+- [ ] BM25
+- [ ] Top-K Retrieval
+
+## Phase 5 — Distributed Search
+
+- [ ] Sharding
+- [ ] Replication
+- [ ] Query Fan-out
+- [ ] Distributed Index Updates
+
+## Phase 6 — AI Search
+
+- [ ] Embedding Generation
+- [ ] Vector Store
+- [ ] Semantic Search
+- [ ] Hybrid Retrieval
+- [ ] Re-ranking
+- [ ] RAG
 
 ---
 
-# 🐳 Local Development
+# 🚀 Getting Started
 
-## Prerequisites
-
-* .NET 10 SDK
-* Docker Desktop
-* Git
-
----
-
-## Clone Repository
+### Clone
 
 ```bash
-git clone <repository-url>
-cd DocumentSearchPlatform
+git clone https://github.com/Sanket9326/Distributed-Search-Engine.git
 ```
 
----
-
-## Configure Environment
-
-Copy the example environment file.
+### Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Update the values if required.
-
----
-
-## Start Infrastructure
+### Start Infrastructure
 
 ```bash
 docker compose up -d
 ```
 
-This starts:
-
-* PostgreSQL
-* MinIO
-* Kafka
-
----
-
-## Build
+### Build
 
 ```bash
 dotnet build
 ```
 
----
+### Test
 
-## Run Upload Service
+```bash
+dotnet test
+```
+
+### Run Upload Service
 
 ```bash
 cd src/Services/UploadService
@@ -344,68 +343,44 @@ dotnet run
 
 ---
 
-## Run Document Ingestion Service
+# 📈 Future Architecture
 
-```bash
-cd src/Services/DocumentIngestionService
-
-dotnet run
+```text
+                   Search API
+                        │
+                        ▼
+              Hybrid Query Engine
+              ┌─────────┴─────────┐
+              ▼                   ▼
+       Keyword Search      Semantic Search
+              │                   │
+      Inverted Index        Vector Database
+              │                   │
+              └─────────┬─────────┘
+                        ▼
+                   Re-ranking
+                        │
+                        ▼
+                 Final Search Results
 ```
 
 ---
 
-## Run Tests
+# 📖 Why this project?
 
-```bash
-dotnet test
-```
+Modern search systems are much more than simple databases.
 
----
+This repository is an educational journey into how production-grade search engines are designed using distributed systems, asynchronous messaging, information retrieval algorithms, and AI-powered semantic search.
 
-# 🧪 Engineering Practices
-
-* Clean Architecture principles
-* SOLID design
-* Dependency Injection
-* Event-Driven Architecture
-* Asynchronous Processing
-* Separation of Concerns
-* Strongly Typed Contracts
-* Interface-Based Infrastructure
-* Nullable Reference Types Enabled
-* Warnings Treated as Errors
+Rather than depending on existing search engines, the goal is to implement many core components from first principles to understand how modern search platforms work internally.
 
 ---
 
-# 📖 Documentation
+<div align="center">
 
-Additional documentation will be added under the `docs/` directory, including:
+### ⭐ If you like this project, consider giving it a Star!
 
-* Architecture Diagrams
-* Sequence Diagrams
-* API Documentation
-* Indexing Pipeline
-* Search Pipeline
-* Deployment Guides
-* Design Decisions
+<img src="https://capsule-render.vercel.app/api?type=waving&height=110&section=footer&color=0:00C9A7,50:203A43,100:0F2027"/>
 
----
-
-# 📌 Current Status
-
-The repository is under active development.
-
-Current progress includes:
-
-* Solution structure
-* Project scaffolding
-* Docker-based local infrastructure
-* Initial Upload Service implementation
-
-Upcoming work focuses on MinIO integration, metadata persistence, Kafka event publishing, and the document ingestion pipeline.
-
----
-
-# 📄 License
-
-This project is intended for learning, experimentation, and demonstrating distributed systems and search engine architecture. Choose and add an open-source license (such as MIT or Apache-2.0) before publishing if you plan to make the repository public.
+</div>
+````
