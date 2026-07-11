@@ -1,3 +1,5 @@
+using Common.FileValidation;
+using Common.Utilities;
 using Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,12 +9,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
+builder.Services.AddSingleton<IGuidGenerator, GuidGenerator>();
+
 builder.Services.Configure<KafkaSettings>(builder.Configuration.GetSection(KafkaSettings.SectionName));
 builder.Services.AddSingleton<IKafkaProducer, KafkaProducerService>();
 builder.Services.AddHostedService<KafkaTopicInitializer>();
 
 builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection(MinioSettings.SectionName));
 builder.Services.AddSingleton<IMinioStorage, MinioStorageService>();
+
+builder.Services.AddSingleton<IFileSignatureValidator, FileSignatureValidator>();
 
 builder.Services.AddControllers();
 builder.Services.AddSingleton<IFileHandlerService, FileHandlerService>();

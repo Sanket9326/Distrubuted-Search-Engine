@@ -1,3 +1,4 @@
+using Common.Utilities;
 using Contracts.Events;
 using Infrastructure;
 using SharedKernel;
@@ -7,19 +8,25 @@ public class FileHandlerService : IFileHandlerService
     private readonly ILogger<FileHandlerService> _logger;
     private readonly IKafkaProducer _kafkaProducer;
     private readonly IMinioStorage _minioStorage;
+    private readonly IGuidGenerator _guidGenerator;
 
-    public FileHandlerService(ILogger<FileHandlerService> logger, IKafkaProducer kafkaProducer, IMinioStorage minioStorage)
+    public FileHandlerService(
+        ILogger<FileHandlerService> logger,
+        IKafkaProducer kafkaProducer,
+        IMinioStorage minioStorage,
+        IGuidGenerator guidGenerator)
     {
         _logger = logger;
         _kafkaProducer = kafkaProducer;
         _minioStorage = minioStorage;
+        _guidGenerator = guidGenerator;
     }
 
     public async Task<(bool IsSuccess, DocumentUploadedEvent Event)> HandleFileUploadAsync(IFormFile file)
     {
         try
         {
-            var objectName = $"{Guid.NewGuid()}-{file.FileName}";
+            var objectName = $"{_guidGenerator.NewGuid()}-{file.FileName}";
 
             using var stream = file.OpenReadStream();
             var storedObjectName = await _minioStorage.UploadFileAsync(objectName, stream, file.Length, file.ContentType);

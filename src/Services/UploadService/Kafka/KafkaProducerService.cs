@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Common.Utilities;
 using Confluent.Kafka;
 using Infrastructure;
 using Microsoft.Extensions.Options;
@@ -7,10 +8,12 @@ public sealed class KafkaProducerService : IKafkaProducer, IAsyncDisposable
 {
     private readonly IProducer<string, string> _producer;
     private readonly ILogger<KafkaProducerService> _logger;
+    private readonly IGuidGenerator _guidGenerator;
 
-    public KafkaProducerService(IOptions<KafkaSettings> settings, ILogger<KafkaProducerService> logger)
+    public KafkaProducerService(IOptions<KafkaSettings> settings, ILogger<KafkaProducerService> logger, IGuidGenerator guidGenerator)
     {
         _logger = logger;
+        _guidGenerator = guidGenerator;
         _producer = new ProducerBuilder<string, string>(new ProducerConfig
         {
             BootstrapServers = settings.Value.BootstrapServers
@@ -24,7 +27,7 @@ public sealed class KafkaProducerService : IKafkaProducer, IAsyncDisposable
             var payload = JsonSerializer.Serialize(message);
             var kafkaMessage = new Message<string, string>
             {
-                Key = Guid.NewGuid().ToString(),
+                Key = _guidGenerator.NewGuid().ToString(),
                 Value = payload
             };
 

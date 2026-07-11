@@ -13,4 +13,8 @@ public sealed class DocumentMetadata
     public DateTime UploadedAtUtc { get; init; }
 
     public DateTime IngestedAtUtc { get; init; }
+
+    public DocumentProcessingStatus Status { get; set; } = DocumentProcessingStatus.Pending;
+
+    public string? ErrorMessage { get; set; }
 }

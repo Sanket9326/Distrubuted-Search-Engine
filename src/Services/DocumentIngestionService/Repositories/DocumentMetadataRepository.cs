@@ -25,4 +25,20 @@ public sealed class DocumentMetadataRepository : IDocumentMetadataRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(m => m.DocumentId == documentId, cancellationToken);
     }
+
+    public async Task UpdateStatusAsync(string documentId, DocumentProcessingStatus status, string? errorMessage, CancellationToken cancellationToken = default)
+    {
+        var metadata = await _dbContext.DocumentMetadata
+            .FirstOrDefaultAsync(m => m.DocumentId == documentId, cancellationToken);
+
+        if (metadata is null)
+        {
+            return;
+        }
+
+        metadata.Status = status;
+        metadata.ErrorMessage = errorMessage;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
 }
