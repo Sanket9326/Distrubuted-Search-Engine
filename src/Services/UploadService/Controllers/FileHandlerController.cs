@@ -1,3 +1,4 @@
+using Common.FileValidation;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
@@ -5,10 +6,12 @@ using Microsoft.AspNetCore.Mvc;
 public class FileHandlerController : ControllerBase
 {
     private readonly IFileHandlerService _fileHandlerService;
+    private readonly IFileSignatureValidator _fileSignatureValidator;
 
-    public FileHandlerController(IFileHandlerService fileHandlerService)
+    public FileHandlerController(IFileHandlerService fileHandlerService, IFileSignatureValidator fileSignatureValidator)
     {
         _fileHandlerService = fileHandlerService;
+        _fileSignatureValidator = fileSignatureValidator;
     }
 
     /// <summary>
@@ -22,6 +25,13 @@ public class FileHandlerController : ControllerBase
         if (file == null || file.Length == 0)
         {
             return BadRequest("No file uploaded.");
+        }
+
+        await using var validationStream = file.OpenReadStream();
+        var validationResult = await _fileSignatureValidator.ValidateAsync(file.FileName, validationStream, HttpContext.RequestAborted);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(validationResult.ErrorMessage);
         }
 
         var result = await _fileHandlerService.HandleFileUploadAsync(file);

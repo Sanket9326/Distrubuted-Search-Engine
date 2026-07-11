@@ -1,17 +1,16 @@
 using Contracts.Events;
-using Entities;
-using Repositories;
+using Services;
 
 namespace Consumers;
 
 public sealed class DocumentUploadedConsumer : IDocumentUploadedConsumer
 {
-    private readonly IDocumentMetadataRepository _repository;
+    private readonly IDocumentProcessingService _processingService;
     private readonly ILogger<DocumentUploadedConsumer> _logger;
 
-    public DocumentUploadedConsumer(IDocumentMetadataRepository repository, ILogger<DocumentUploadedConsumer> logger)
+    public DocumentUploadedConsumer(IDocumentProcessingService processingService, ILogger<DocumentUploadedConsumer> logger)
     {
-        _repository = repository;
+        _processingService = processingService;
         _logger = logger;
     }
 
@@ -24,16 +23,6 @@ public sealed class DocumentUploadedConsumer : IDocumentUploadedConsumer
             message.ContentType,
             message.UploadedAtUtc);
 
-        var metadata = new DocumentMetadata
-        {
-            DocumentId = message.DocumentId,
-            FileName = message.FileName,
-            ContentType = message.ContentType,
-            AuthorizedDepartments = Department.None,
-            UploadedAtUtc = message.UploadedAtUtc,
-            IngestedAtUtc = DateTime.UtcNow
-        };
-
-        await _repository.AddAsync(metadata, cancellationToken);
+        await _processingService.ProcessAsync(message, cancellationToken);
     }
 }

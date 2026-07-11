@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Persistence;
@@ -11,9 +12,11 @@ using Persistence;
 namespace DocumentIngestionService.Persistence.Migrations
 {
     [DbContext(typeof(DocumentIngestionDbContext))]
-    partial class DocumentIngestionDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260711082219_AddDocumentChunksAndStatus")]
+    partial class AddDocumentChunksAndStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -43,8 +46,8 @@ namespace DocumentIngestionService.Persistence.Migrations
 
                     b.Property<string>("DocumentId")
                         .IsRequired()
-                        .HasMaxLength(600)
-                        .HasColumnType("character varying(600)");
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.HasKey("Id");
 
@@ -57,8 +60,8 @@ namespace DocumentIngestionService.Persistence.Migrations
             modelBuilder.Entity("Entities.DocumentMetadata", b =>
                 {
                     b.Property<string>("DocumentId")
-                        .HasMaxLength(600)
-                        .HasColumnType("character varying(600)");
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<int>("AuthorizedDepartments")
                         .HasColumnType("integer");
