@@ -1,4 +1,4 @@
-namespace Entities;
+namespace Contracts;
 
 public enum DocumentProcessingStatus
 {
@@ -6,5 +6,8 @@ public enum DocumentProcessingStatus
     Processing,
     Chunked,
     Failed,
-    Unsupported
+    Unsupported,
+    Embedding,
+    Embedded,
+    EmbeddingFailed
 }

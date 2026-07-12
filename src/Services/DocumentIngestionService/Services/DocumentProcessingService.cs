@@ -1,4 +1,5 @@
 using Common.FileValidation;
+using Contracts;
 using Contracts.Events;
 using Entities;
 using Exceptions;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Repositories;
 using Services.Chunking;
 using Services.TextExtraction;
+using SharedKernel;
 
 namespace Services;
 
@@ -23,6 +25,7 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
     private readonly IFileSignatureValidator _fileSignatureValidator;
     private readonly ITextExtractorResolver _textExtractorResolver;
     private readonly IChunkingService _chunkingService;
+    private readonly IKafkaProducer _kafkaProducer;
     private readonly ChunkingOptions _chunkingOptions;
     private readonly long _maxFileSizeBytes;
     private readonly ILogger<DocumentProcessingService> _logger;
@@ -34,6 +37,7 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
         IFileSignatureValidator fileSignatureValidator,
         ITextExtractorResolver textExtractorResolver,
         IChunkingService chunkingService,
+        IKafkaProducer kafkaProducer,
         IOptions<ChunkingOptions> chunkingOptions,
         IOptions<FileProcessingOptions> fileProcessingOptions,
         ILogger<DocumentProcessingService> logger)
@@ -44,6 +48,7 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
         _fileSignatureValidator = fileSignatureValidator;
         _textExtractorResolver = textExtractorResolver;
         _chunkingService = chunkingService;
+        _kafkaProducer = kafkaProducer;
         _chunkingOptions = chunkingOptions.Value;
         _maxFileSizeBytes = fileProcessingOptions.Value.MaxFileSizeBytes;
         _logger = logger;
@@ -56,7 +61,7 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
             DocumentId = message.DocumentId,
             FileName = message.FileName,
             ContentType = message.ContentType,
-            AuthorizedDepartments = Department.None,
+            AuthorizedDepartments = message.AuthorizedDepartments,
             UploadedAtUtc = message.UploadedAtUtc,
             IngestedAtUtc = DateTime.UtcNow,
             Status = DocumentProcessingStatus.Pending
@@ -94,6 +99,16 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
             if (chunks.Count > 0)
             {
                 await _chunkRepository.AddRangeAsync(chunks, cancellationToken);
+
+                await _kafkaProducer.PublishAsync(
+                    Constants.KafkaTopics.ChunksCreated,
+                    new ChunksCreatedEvent
+                    {
+                        DocumentId = message.DocumentId,
+                        ChunkCount = chunks.Count,
+                        CreatedAtUtc = DateTime.UtcNow
+                    },
+                    cancellationToken);
             }
 
             var noExtractableText = string.IsNullOrWhiteSpace(text);

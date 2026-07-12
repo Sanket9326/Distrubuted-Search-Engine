@@ -57,6 +57,25 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: document-search-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: document-search-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
   upload-service:
     build:
       context: .
@@ -71,7 +90,7 @@ services:
       Minio__BucketName: ${MINIO_BUCKET_NAME:-documents}
       Minio__UseSSL: "false"
     ports:
-      - "8080"
+      - "${UPLOAD_SERVICE_PORT:-8080}:8080"
     depends_on:
       - postgres
       - minio
@@ -97,7 +116,30 @@ services:
       - minio
       - kafka
 
+  embedding-service:
+    build:
+      context: .
+      dockerfile: src/Services/EmbeddingService/Dockerfile
+    restart: unless-stopped
+    environment:
+      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Production}
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__GroupId: embedding-service
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Qdrant__Endpoint: qdrant
+      Qdrant__Port: "6334"
+      Qdrant__CollectionName: ${QDRANT_COLLECTION_NAME:-document_chunks}
+      Ollama__Endpoint: http://ollama:11434
+      Ollama__Model: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      - postgres
+      - kafka
+      - qdrant
+      - ollama
+
 volumes:
   postgres-data:
   minio-data:
   pgadmin-data:
+  qdrant-data:
+  ollama-data:

@@ -8,5 +8,7 @@ public sealed class DocumentUploadedEvent
 
     public string ContentType { get; init; } = string.Empty;
 
+    public Department AuthorizedDepartments { get; init; } = Department.None;
+
     public DateTime UploadedAtUtc { get; init; } = DateTime.UtcNow;
 }
