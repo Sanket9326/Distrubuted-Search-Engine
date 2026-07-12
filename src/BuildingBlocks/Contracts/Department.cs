@@ -1,4 +1,4 @@
-namespace Entities;
+namespace Contracts;
 
 [Flags]
 public enum Department

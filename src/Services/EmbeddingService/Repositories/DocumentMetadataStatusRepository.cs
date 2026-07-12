@@ -1,30 +1,25 @@
 using Contracts;
-using Entities;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
 
 namespace Repositories;
 
-public sealed class DocumentMetadataRepository : IDocumentMetadataRepository
+public sealed class DocumentMetadataStatusRepository : IDocumentMetadataStatusRepository
 {
-    private readonly DocumentIngestionDbContext _dbContext;
+    private readonly EmbeddingReadDbContext _dbContext;
 
-    public DocumentMetadataRepository(DocumentIngestionDbContext dbContext)
+    public DocumentMetadataStatusRepository(EmbeddingReadDbContext dbContext)
     {
         _dbContext = dbContext;
     }
 
-    public async Task AddAsync(DocumentMetadata metadata, CancellationToken cancellationToken = default)
+    public async Task<Department> GetAuthorizedDepartmentsAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        await _dbContext.DocumentMetadata.AddAsync(metadata, cancellationToken);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-    }
-
-    public Task<DocumentMetadata?> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
-    {
-        return _dbContext.DocumentMetadata
+        var metadata = await _dbContext.DocumentMetadata
             .AsNoTracking()
             .FirstOrDefaultAsync(m => m.DocumentId == documentId, cancellationToken);
+
+        return metadata?.AuthorizedDepartments ?? Department.None;
     }
 
     public async Task UpdateStatusAsync(string documentId, DocumentProcessingStatus status, string? errorMessage, CancellationToken cancellationToken = default)

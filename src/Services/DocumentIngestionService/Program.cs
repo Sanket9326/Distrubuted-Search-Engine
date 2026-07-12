@@ -3,6 +3,7 @@ using Common.Utilities;
 using Consumers;
 using HostedServices;
 using Infrastructure;
+using Kafka;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Persistence;
@@ -20,6 +21,8 @@ builder.Logging.AddConsole();
 builder.Services.Configure<KafkaConsumerSettings>(builder.Configuration.GetSection(KafkaConsumerSettings.SectionName));
 builder.Services.AddScoped<IDocumentUploadedConsumer, DocumentUploadedConsumer>();
 builder.Services.AddHostedService<KafkaConsumerHostedService>();
+builder.Services.AddSingleton<IKafkaProducer, KafkaProducerService>();
+builder.Services.AddHostedService<KafkaTopicInitializer>();
 
 builder.Services.Configure<PostgresSettings>(builder.Configuration.GetSection(PostgresSettings.SectionName));
 builder.Services.AddDbContext<DocumentIngestionDbContext>((serviceProvider, options) =>

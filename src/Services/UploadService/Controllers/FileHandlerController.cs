@@ -18,9 +18,10 @@ public class FileHandlerController : ControllerBase
     /// Handles the file upload request.
     /// </summary>
     /// <param name="file">The file to upload.</param>
+    /// <param name="departments">Comma-separated department names authorized to access this document (e.g. "Finance,Engineering").</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     [HttpPost("upload")]
-    public async Task<IActionResult> UploadFile(IFormFile file)
+    public async Task<IActionResult> UploadFile(IFormFile file, [FromForm] string? departments = null)
     {
         if (file == null || file.Length == 0)
         {
@@ -34,7 +35,7 @@ public class FileHandlerController : ControllerBase
             return BadRequest(validationResult.ErrorMessage);
         }
 
-        var result = await _fileHandlerService.HandleFileUploadAsync(file);
+        var result = await _fileHandlerService.HandleFileUploadAsync(file, departments);
 
         if (result.IsSuccess)
         {
