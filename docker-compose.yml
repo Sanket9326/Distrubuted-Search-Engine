@@ -76,6 +76,16 @@ services:
     volumes:
       - ollama-data:/root/.ollama
 
+  reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    container_name: document-search-reranker
+    restart: unless-stopped
+    command: --model-id ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+    ports:
+      - "${RERANKER_PORT:-8082}:80"
+    volumes:
+      - reranker-data:/data
+
   upload-service:
     build:
       context: .
@@ -137,9 +147,30 @@ services:
       - qdrant
       - ollama
 
+  search-service:
+    build:
+      context: .
+      dockerfile: src/Services/SearchService/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      Qdrant__Endpoint: qdrant
+      Qdrant__Port: "6334"
+      Qdrant__CollectionName: ${QDRANT_COLLECTION_NAME:-document_chunks}
+      Ollama__Endpoint: http://ollama:11434
+      Ollama__Model: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      Reranker__Endpoint: http://reranker:80
+    ports:
+      - "${SEARCH_SERVICE_PORT:-8081}:8080"
+    depends_on:
+      - qdrant
+      - ollama
+      - reranker
+
 volumes:
   postgres-data:
   minio-data:
   pgadmin-data:
   qdrant-data:
   ollama-data:
+  reranker-data:

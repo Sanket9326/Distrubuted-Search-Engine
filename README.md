@@ -4,7 +4,7 @@
 
 <p>
 <a href="https://github.com/Sanket9326">
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&pause=1200&color=00C9A7&center=true&vCenter=true&width=850&lines=Upload+%E2%86%92+Store+%E2%86%92+Publish+%E2%86%92+Ingest+%E2%86%92+Chunk+%E2%86%92+Embed;Distributed+Microservices+Built+with+.NET+10;Apache+Kafka+%7C+PostgreSQL+%7C+MinIO+%7C+Qdrant+%7C+Ollama;Next%3A+Search+API+%7C+Hybrid+Retrieval+%7C+RAG" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&pause=1200&color=00C9A7&center=true&vCenter=true&width=850&lines=Upload+%E2%86%92+Store+%E2%86%92+Publish+%E2%86%92+Ingest+%E2%86%92+Chunk+%E2%86%92+Embed+%E2%86%92+Search;Distributed+Microservices+Built+with+.NET+10;Apache+Kafka+%7C+PostgreSQL+%7C+MinIO+%7C+Qdrant+%7C+Ollama;Semantic+Search+with+Cross-Encoder+Re-ranking%3B+Next%3A+Hybrid+Retrieval+%7C+RAG" />
 </a>
 </p>
 
@@ -14,6 +14,7 @@
 ![MinIO](https://img.shields.io/badge/MinIO-Object%20Storage-C72E49?style=for-the-badge&logo=minio&logoColor=white)
 ![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20Store-DC244C?style=for-the-badge&logo=qdrant&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-Embeddings-000000?style=for-the-badge&logo=ollama&logoColor=white)
+![TEI](https://img.shields.io/badge/HF%20TEI-Cross--Encoder%20Reranker-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 </div>
@@ -37,7 +38,7 @@ The platform starts with document uploads and progressively evolves into a compl
 
 The objective is to build every major search engine component from scratch instead of relying on existing search platforms.
 
-**Where things stand today:** a document can be uploaded, stored, chunked, embedded, and landed as a filterable vector in Qdrant, end to end. There is no query/search API yet — that's the next phase.
+**Where things stand today:** the full pipeline is end to end — a document can be uploaded, stored, chunked, embedded, landed as a filterable vector in Qdrant, and **queried back through a semantic Search API** with cross-encoder re-ranking. Keyword/BM25 search and hybrid retrieval are the next phase.
 
 ---
 
@@ -55,10 +56,13 @@ The objective is to build every major search engine component from scratch inste
 | 🧬 Embedding generation (Ollama, `nomic-embed-text`, 768-dim) | ✅ |
 | 🗂 Vector storage (Qdrant, one point per chunk) | ✅ |
 | 🔐 Department-based authorization tagging on vectors | ✅ |
-| 🔍 Search API | ⏳ |
-| 🧠 Semantic Search (query → vector → results) | ⏳ |
+| 🔍 Search API (`POST /api/search`) | ✅ |
+| 🧠 Semantic Search (query → embed → Qdrant → results) | ✅ |
+| 🎯 Cross-encoder re-ranking (TEI, `bge-reranker-v2-m3`) | ✅ |
+| 🔐 Department-filtered retrieval on search | ✅ |
 | ⚡ BM25 / keyword search | ⏳ |
-| 🔄 Hybrid retrieval + re-ranking + RAG | ⏳ |
+| 🔄 Hybrid retrieval (keyword + semantic) | ⏳ |
+| 💬 Retrieval-Augmented Generation (RAG) | ⏳ |
 
 ---
 
@@ -87,6 +91,10 @@ Ollama[(Ollama)]
 
 Qdrant[(Qdrant)]
 
+Search[Search Service]
+
+Reranker[(TEI Reranker)]
+
 Client -->|Upload file + departments| API
 
 API -->|Store Document| MinIO
@@ -107,7 +115,16 @@ Embed -->|Generate embeddings| Ollama
 
 Embed -->|Upsert vectors + payload| Qdrant
 
+Client -->|Query + departments| Search
+
+Search -->|Embed query| Ollama
+
+Search -->|Filtered vector search| Qdrant
+
+Search -->|Cross-encoder rerank| Reranker
+
 style API fill:#00c9a7,color:#000
+style Search fill:#00c9a7,color:#000
 style Worker fill:#203A43,color:#fff
 style Embed fill:#203A43,color:#fff
 style Kafka1 fill:#231F20,color:#fff
@@ -116,6 +133,7 @@ style MinIO fill:#C72E49,color:#fff
 style Postgres fill:#4169E1,color:#fff
 style Qdrant fill:#DC244C,color:#fff
 style Ollama fill:#000000,color:#fff
+style Reranker fill:#FFD21E,color:#000
 ```
 
 ---
@@ -164,9 +182,25 @@ style Ollama fill:#000000,color:#fff
                         │
                         ▼
           Status: Embedded (or EmbeddingFailed)
+
+
+              Query + Departments
                         │
                         ▼
-              Future: Search API
+              Search Service
+                        │
+          ┌─────────────┼─────────────┐
+          ▼             ▼             ▼
+   Sanitize query   Parse/validate  Embed query
+                     departments     (Ollama)
+          │             │             │
+          └─────────────┴─────────────┘
+                        ▼
+      Filtered vector search (Qdrant, by department)
+                        ▼
+      Cross-encoder rerank (TEI, bge-reranker-v2-m3)
+                        ▼
+                 Top-K Search Results
 ```
 
 ---
@@ -178,6 +212,16 @@ style Ollama fill:#000000,color:#fff
 | **Upload Service** | ASP.NET Core Web API | `8080` | Validates + accepts uploads, stores the file in MinIO, publishes `DocumentUploadedEvent` |
 | **Document Ingestion Service** | Background worker | — | Downloads the file, extracts text, chunks it, persists chunks/metadata to Postgres, publishes `ChunksCreatedEvent` |
 | **Embedding Service** | Background worker | — | Reads chunks for a document, generates embeddings via Ollama, upserts vectors + payload into Qdrant, tracks status |
+| **Search Service** | ASP.NET Core Web API | `8081` | Embeds the query (Ollama), runs a department-filtered vector search against Qdrant, re-ranks candidates via a TEI cross-encoder, returns top-K results |
+
+### External inference dependencies
+
+| Component | Role | Port |
+|---|---|---|
+| **Ollama** (`nomic-embed-text`) | Embeds document chunks (Embedding Service) and queries (Search Service) into 768-dim vectors | `11434` |
+| **TEI Reranker** (`BAAI/bge-reranker-v2-m3`) | Cross-encoder re-scores Qdrant's top candidates against the raw query for true relevance | `8082` |
+
+> ⚠️ First boot note: the TEI reranker container downloads the model on first start. `bge-reranker-v2-m3` has no published ONNX weights, so TEI falls back to safetensors + CPU (Candle backend) — first-time download + warmup can take **10–15 minutes**. `search-service` calls will `500` with `Connection refused (reranker:80)` until `GET http://localhost:8082/health` returns `200`.
 
 ### Kafka topics
 
@@ -251,18 +295,20 @@ src
 │   ├── SharedKernel        # Kafka topic constants, cross-cutting constants
 │   ├── Contracts           # Shared events (DocumentUploadedEvent, ChunksCreatedEvent)
 │   │                       # and enums (DocumentProcessingStatus, Department)
-│   ├── Infrastructure      # IKafkaProducer, IFileStorage, IMinioStorage abstractions
-│   └── Common              # File validation, GUID generation utilities
+│   ├── Infrastructure      # IKafkaProducer, IFileStorage, IMinioStorage, IEmbeddingGenerator
+│   └── Common              # File validation, GUID generation, department parsing, text sanitization
 │
 ├── Services
 │   ├── UploadService              # Web API — upload endpoint
 │   ├── DocumentIngestionService    # Worker — extract, chunk, persist
-│   └── EmbeddingService            # Worker — embed, upsert to Qdrant
+│   ├── EmbeddingService            # Worker — embed, upsert to Qdrant
+│   └── SearchService               # Web API — embed query, vector search, rerank
 │
 ├── Tests
 │   ├── UploadService.Tests
 │   ├── DocumentIngestionService.Tests
-│   └── EmbeddingService.Tests
+│   ├── EmbeddingService.Tests
+│   └── SearchService.Tests
 │
 └── docker-compose.yml
 ```
@@ -280,6 +326,7 @@ src
 | Object Storage | MinIO |
 | Embedding Model Runtime | Ollama (`nomic-embed-text`, 768-dim) |
 | Vector Store | Qdrant (Cosine similarity) |
+| Re-ranking | Hugging Face Text Embeddings Inference (`BAAI/bge-reranker-v2-m3`) |
 | Containerization | Docker / Docker Compose |
 | Architecture | Microservices, event-driven |
 | Future Search | BM25, hybrid retrieval, RAG |
@@ -325,6 +372,8 @@ src
 - [ ] Phrase Search
 - [ ] Prefix Search
 
+> Note: keyword/BM25 search (this phase) is still pending — what's live today is the **semantic** path, tracked under Phase 6 below.
+
 ## Phase 4 — Ranking
 
 - [ ] TF
@@ -344,9 +393,9 @@ src
 
 - [x] Embedding Generation
 - [x] Vector Store
-- [ ] Semantic Search (query API)
-- [ ] Hybrid Retrieval
-- [ ] Re-ranking
+- [x] Semantic Search (query API)
+- [x] Re-ranking (cross-encoder via TEI)
+- [ ] Hybrid Retrieval (blend with keyword search)
 - [ ] RAG
 
 ---
@@ -371,7 +420,11 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-This brings up Postgres, pgAdmin, MinIO, Kafka, Qdrant, Ollama, and all three .NET services (Upload, Document Ingestion, Embedding). On first run, Ollama pulls the `nomic-embed-text` model — the Embedding Service waits for that before it starts consuming.
+This brings up Postgres, pgAdmin, MinIO, Kafka, Qdrant, Ollama, the TEI reranker, and all four .NET services (Upload, Document Ingestion, Embedding, Search).
+
+On first run:
+- **Ollama** needs the `nomic-embed-text` model pulled — `docker exec -it document-search-ollama ollama pull nomic-embed-text` if it isn't already cached.
+- **TEI reranker** downloads `BAAI/bge-reranker-v2-m3` on first start; this model has no ONNX weights published, so TEI falls back to safetensors on CPU — expect **10–15 minutes** before it's ready. Poll `http://localhost:8082/health` (expect `200`) before calling the Search Service, or its requests will fail with `500 Connection refused (reranker:80)`.
 
 ### Build & Test locally
 
@@ -382,6 +435,8 @@ dotnet test
 
 ### Try it
 
+**1. Upload a document**
+
 ```
 POST http://localhost:8080/api/FileHandler/upload
 Content-Type: multipart/form-data
@@ -390,9 +445,26 @@ file: <your .pdf / .docx / .txt>
 departments: Finance,Engineering   # optional, comma-separated
 ```
 
+Valid department values (case-insensitive): `HumanResources`, `Finance`, `Engineering`, `Legal`, `Sales`, `Marketing`, `Operations`, `ExecutiveManagement`. This must go in the multipart **form body**, not the query string — `[FromForm]` binding ignores query params, and an omitted/mismatched value silently resolves to `Department.None` (no authorized departments).
+
 Check progress:
 - **Postgres** (`document_metadata.status`) — via pgAdmin at `http://localhost:5050`
 - **Qdrant** — built-in dashboard at `http://localhost:6333/dashboard`
+
+**2. Search it** (once status reaches `Embedded` — ingestion + embedding are async over Kafka)
+
+```
+POST http://localhost:8081/api/search
+Content-Type: application/json
+
+{
+  "query": "your question about the document",
+  "departments": ["Finance"],
+  "topK": 5
+}
+```
+
+`departments` here must overlap what the document was uploaded with, or the result set is empty by design (department is an authorization filter, not a ranking signal).
 
 ---
 
@@ -405,16 +477,19 @@ Check progress:
               Hybrid Query Engine
               ┌─────────┴─────────┐
               ▼                   ▼
-       Keyword Search      Semantic Search
+       Keyword Search      Semantic Search  ✅ live today
               │                   │
       Inverted Index        Qdrant Vector Store
-              │                   │
+        (⏳ pending)               │
               └─────────┬─────────┘
                         ▼
-                   Re-ranking
+                   Re-ranking          ✅ live today (TEI cross-encoder)
                         │
                         ▼
                  Final Search Results
+                        │
+                        ▼
+                RAG Answer Generation  ⏳ pending
 ```
 
 ---

@@ -43,6 +43,7 @@ public sealed class QdrantVectorStore : IVectorStore
             Payload =
             {
                 ["documentId"] = chunk.DocumentId,
+                ["fileName"] = chunk.FileName,
                 ["chunkIndex"] = chunk.ChunkIndex,
                 ["content"] = chunk.Content,
                 ["createdAtUtc"] = chunk.CreatedAtUtc.ToString("o"),

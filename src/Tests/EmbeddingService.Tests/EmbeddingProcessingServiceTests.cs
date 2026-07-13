@@ -1,10 +1,10 @@
 using Contracts;
 using Contracts.Events;
 using Entities;
+using Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
 using Repositories;
 using Services;
-using Services.Embedding;
 using Services.VectorStorage;
 
 namespace EmbeddingService.Tests;
@@ -107,8 +107,10 @@ public sealed class EmbeddingProcessingServiceTests
 
         public Department AuthorizedDepartments { get; set; } = Department.None;
 
-        public Task<Department> GetAuthorizedDepartmentsAsync(string documentId, CancellationToken cancellationToken = default)
-            => Task.FromResult(AuthorizedDepartments);
+        public string FileName { get; set; } = string.Empty;
+
+        public Task<(Department AuthorizedDepartments, string FileName)> GetDocumentInfoAsync(string documentId, CancellationToken cancellationToken = default)
+            => Task.FromResult((AuthorizedDepartments, FileName));
 
         public Task UpdateStatusAsync(string documentId, DocumentProcessingStatus status, string? errorMessage, CancellationToken cancellationToken = default)
         {
