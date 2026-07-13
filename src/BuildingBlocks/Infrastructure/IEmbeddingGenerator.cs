@@ -1,4 +1,4 @@
-namespace Services.Embedding;
+namespace Infrastructure;
 
 public interface IEmbeddingGenerator
 {

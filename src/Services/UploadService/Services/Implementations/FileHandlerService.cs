@@ -1,5 +1,4 @@
 using Common.Utilities;
-using Contracts;
 using Contracts.Events;
 using Infrastructure;
 using SharedKernel;
@@ -37,7 +36,7 @@ public class FileHandlerService : IFileHandlerService
                 DocumentId = objectName,
                 FileName = file.FileName,
                 ContentType = file.ContentType,
-                AuthorizedDepartments = ParseDepartments(departments),
+                AuthorizedDepartments = DepartmentParser.Parse(departments),
                 UploadedAtUtc = DateTime.UtcNow
             };
 
@@ -50,24 +49,5 @@ public class FileHandlerService : IFileHandlerService
             _logger.LogError(ex, "Failed to handle file upload for {FileName}", file.FileName);
             return (false, new DocumentUploadedEvent());
         }
-    }
-
-    private static Department ParseDepartments(string? departments)
-    {
-        if (string.IsNullOrWhiteSpace(departments))
-        {
-            return Department.None;
-        }
-
-        var result = Department.None;
-        foreach (var token in departments.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (Enum.TryParse<Department>(token, ignoreCase: true, out var department))
-            {
-                result |= department;
-            }
-        }
-
-        return result;
     }
 }

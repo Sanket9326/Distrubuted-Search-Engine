@@ -31,6 +31,7 @@ public sealed class EmbeddingReadDbContext : DbContext
             entity.ToTable("document_metadata");
             entity.HasKey(e => e.DocumentId);
             entity.Property(e => e.DocumentId).HasMaxLength(600);
+            entity.Property(e => e.FileName).HasMaxLength(512);
             entity.Property(e => e.AuthorizedDepartments).IsRequired().HasConversion<int>();
             entity.Property(e => e.Status).IsRequired().HasConversion<int>();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2048);

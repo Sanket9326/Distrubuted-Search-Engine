@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Services.TextExtraction;
+namespace Common.TextProcessing;
 
 /// <summary>
 /// Strips non-text artifacts (control characters, decode-failure markers) that can otherwise leak into

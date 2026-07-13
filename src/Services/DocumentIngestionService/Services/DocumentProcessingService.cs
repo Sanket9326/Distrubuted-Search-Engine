@@ -1,4 +1,5 @@
 using Common.FileValidation;
+using Common.TextProcessing;
 using Contracts;
 using Contracts.Events;
 using Entities;

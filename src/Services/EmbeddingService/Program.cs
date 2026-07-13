@@ -1,5 +1,6 @@
 using Consumers;
 using HostedServices;
+using Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Persistence;

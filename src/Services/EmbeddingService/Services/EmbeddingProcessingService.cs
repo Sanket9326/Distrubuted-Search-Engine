@@ -1,7 +1,7 @@
 using Contracts;
 using Contracts.Events;
+using Infrastructure;
 using Repositories;
-using Services.Embedding;
 using Services.VectorStorage;
 
 namespace Services;
@@ -54,10 +54,10 @@ public sealed class EmbeddingProcessingService : IEmbeddingProcessingService
                     $"Embedding count ({embeddings.Count}) does not match chunk count ({chunks.Count}) for document '{message.DocumentId}'.");
             }
 
-            var authorizedDepartments = await _metadataStatusRepository.GetAuthorizedDepartmentsAsync(message.DocumentId, cancellationToken);
+            var (authorizedDepartments, fileName) = await _metadataStatusRepository.GetDocumentInfoAsync(message.DocumentId, cancellationToken);
 
             var embeddedChunks = chunks.Zip(embeddings, (chunk, embedding) =>
-                new EmbeddedChunk(chunk.Id, chunk.DocumentId, chunk.ChunkIndex, chunk.Content, chunk.CreatedAtUtc, authorizedDepartments, embedding));
+                new EmbeddedChunk(chunk.Id, chunk.DocumentId, fileName, chunk.ChunkIndex, chunk.Content, chunk.CreatedAtUtc, authorizedDepartments, embedding));
 
             await _vectorStore.UpsertAsync(embeddedChunks, cancellationToken);
 

@@ -13,13 +13,13 @@ public sealed class DocumentMetadataStatusRepository : IDocumentMetadataStatusRe
         _dbContext = dbContext;
     }
 
-    public async Task<Department> GetAuthorizedDepartmentsAsync(string documentId, CancellationToken cancellationToken = default)
+    public async Task<(Department AuthorizedDepartments, string FileName)> GetDocumentInfoAsync(string documentId, CancellationToken cancellationToken = default)
     {
         var metadata = await _dbContext.DocumentMetadata
             .AsNoTracking()
             .FirstOrDefaultAsync(m => m.DocumentId == documentId, cancellationToken);
 
-        return metadata?.AuthorizedDepartments ?? Department.None;
+        return (metadata?.AuthorizedDepartments ?? Department.None, metadata?.FileName ?? string.Empty);
     }
 
     public async Task UpdateStatusAsync(string documentId, DocumentProcessingStatus status, string? errorMessage, CancellationToken cancellationToken = default)
