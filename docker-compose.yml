@@ -160,6 +160,9 @@ services:
       Ollama__Endpoint: http://ollama:11434
       Ollama__Model: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
       Reranker__Endpoint: http://reranker:80
+      Gemini__Endpoint: https://generativelanguage.googleapis.com/v1beta/
+      Gemini__ApiKey: ${GEMINI_API_KEY}
+      Gemini__Model: ${GEMINI_MODEL:-gemini-flash-lite-latest}
     ports:
       - "${SEARCH_SERVICE_PORT:-8081}:8080"
     depends_on:
