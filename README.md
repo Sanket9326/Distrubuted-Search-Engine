@@ -4,7 +4,7 @@
 
 <p>
 <a href="https://github.com/Sanket9326">
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&pause=1200&color=00C9A7&center=true&vCenter=true&width=850&lines=Upload+%E2%86%92+Store+%E2%86%92+Publish+%E2%86%92+Ingest+%E2%86%92+Chunk+%E2%86%92+Embed+%E2%86%92+Search;Distributed+Microservices+Built+with+.NET+10;Apache+Kafka+%7C+PostgreSQL+%7C+MinIO+%7C+Qdrant+%7C+Ollama;Semantic+Search+with+Cross-Encoder+Re-ranking%3B+Next%3A+Hybrid+Retrieval+%7C+RAG" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&pause=1200&color=00C9A7&center=true&vCenter=true&width=850&lines=Upload+%E2%86%92+Store+%E2%86%92+Publish+%E2%86%92+Ingest+%E2%86%92+Chunk+%E2%86%92+Embed+%E2%86%92+Search+%E2%86%92+Answer;Distributed+Microservices+Built+with+.NET+10;Apache+Kafka+%7C+PostgreSQL+%7C+MinIO+%7C+Qdrant+%7C+Ollama;Semantic+Search+%2B+Cross-Encoder+Re-ranking+%2B+RAG+%28Gemini%29%3B+Next%3A+Hybrid+Retrieval" />
 </a>
 </p>
 
@@ -15,6 +15,7 @@
 ![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20Store-DC244C?style=for-the-badge&logo=qdrant&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-Embeddings-000000?style=for-the-badge&logo=ollama&logoColor=white)
 ![TEI](https://img.shields.io/badge/HF%20TEI-Cross--Encoder%20Reranker-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)
+![Gemini](https://img.shields.io/badge/Google%20Gemini-RAG%20Answer%20Generation-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 </div>
@@ -38,7 +39,7 @@ The platform starts with document uploads and progressively evolves into a compl
 
 The objective is to build every major search engine component from scratch instead of relying on existing search platforms.
 
-**Where things stand today:** the full pipeline is end to end — a document can be uploaded, stored, chunked, embedded, landed as a filterable vector in Qdrant, and **queried back through a semantic Search API** with cross-encoder re-ranking. Keyword/BM25 search and hybrid retrieval are the next phase.
+**Where things stand today:** the full pipeline is end to end — a document can be uploaded, stored, chunked, embedded, landed as a filterable vector in Qdrant, and **queried back through a semantic Search API** with cross-encoder re-ranking. On top of that, a **RAG answer endpoint** now takes those re-ranked chunks, builds a token-budgeted prompt, and calls Google Gemini to return a grounded, cited natural-language answer. Keyword/BM25 search and hybrid retrieval are the next phase.
 
 ---
 
@@ -60,9 +61,10 @@ The objective is to build every major search engine component from scratch inste
 | 🧠 Semantic Search (query → embed → Qdrant → results) | ✅ |
 | 🎯 Cross-encoder re-ranking (TEI, `bge-reranker-v2-m3`) | ✅ |
 | 🔐 Department-filtered retrieval on search | ✅ |
+| 🧩 Token-budgeted prompt builder over re-ranked chunks | ✅ |
+| 💬 RAG Answer API (`POST /api/search/answer`, Google Gemini) | ✅ |
 | ⚡ BM25 / keyword search | ⏳ |
 | 🔄 Hybrid retrieval (keyword + semantic) | ⏳ |
-| 💬 Retrieval-Augmented Generation (RAG) | ⏳ |
 
 ---
 
@@ -95,6 +97,8 @@ Search[Search Service]
 
 Reranker[(TEI Reranker)]
 
+Gemini[(Google Gemini)]
+
 Client -->|Upload file + departments| API
 
 API -->|Store Document| MinIO
@@ -123,6 +127,8 @@ Search -->|Filtered vector search| Qdrant
 
 Search -->|Cross-encoder rerank| Reranker
 
+Search -->|Prompt-build + generate answer| Gemini
+
 style API fill:#00c9a7,color:#000
 style Search fill:#00c9a7,color:#000
 style Worker fill:#203A43,color:#fff
@@ -134,6 +140,7 @@ style Postgres fill:#4169E1,color:#fff
 style Qdrant fill:#DC244C,color:#fff
 style Ollama fill:#000000,color:#fff
 style Reranker fill:#FFD21E,color:#000
+style Gemini fill:#4285F4,color:#fff
 ```
 
 ---
@@ -201,6 +208,14 @@ style Reranker fill:#FFD21E,color:#000
       Cross-encoder rerank (TEI, bge-reranker-v2-m3)
                         ▼
                  Top-K Search Results
+                        │
+                        │   (POST /api/search/answer only)
+                        ▼
+         Prompt Builder (token-budgeted context packing)
+                        ▼
+         Generate answer (Google Gemini)
+                        ▼
+         Answer + cited Sources
 ```
 
 ---
@@ -212,7 +227,7 @@ style Reranker fill:#FFD21E,color:#000
 | **Upload Service** | ASP.NET Core Web API | `8080` | Validates + accepts uploads, stores the file in MinIO, publishes `DocumentUploadedEvent` |
 | **Document Ingestion Service** | Background worker | — | Downloads the file, extracts text, chunks it, persists chunks/metadata to Postgres, publishes `ChunksCreatedEvent` |
 | **Embedding Service** | Background worker | — | Reads chunks for a document, generates embeddings via Ollama, upserts vectors + payload into Qdrant, tracks status |
-| **Search Service** | ASP.NET Core Web API | `8081` | Embeds the query (Ollama), runs a department-filtered vector search against Qdrant, re-ranks candidates via a TEI cross-encoder, returns top-K results |
+| **Search Service** | ASP.NET Core Web API | `8081` | Embeds the query (Ollama), runs a department-filtered vector search against Qdrant, re-ranks candidates via a TEI cross-encoder, returns top-K results (`POST /api/search`); optionally builds a token-budgeted prompt from those chunks and generates a grounded, cited answer via Google Gemini (`POST /api/search/answer`) |
 
 ### External inference dependencies
 
@@ -220,6 +235,7 @@ style Reranker fill:#FFD21E,color:#000
 |---|---|---|
 | **Ollama** (`nomic-embed-text`) | Embeds document chunks (Embedding Service) and queries (Search Service) into 768-dim vectors | `11434` |
 | **TEI Reranker** (`BAAI/bge-reranker-v2-m3`) | Cross-encoder re-scores Qdrant's top candidates against the raw query for true relevance | `8082` |
+| **Google Gemini** (`gemini-flash-lite-latest`) | Generates a cited natural-language answer from the re-ranked chunks (`POST /api/search/answer` only) | — (hosted API) |
 
 > ⚠️ First boot note: the TEI reranker container downloads the model on first start. `bge-reranker-v2-m3` has no published ONNX weights, so TEI falls back to safetensors + CPU (Candle backend) — first-time download + warmup can take **10–15 minutes**. `search-service` calls will `500` with `Connection refused (reranker:80)` until `GET http://localhost:8082/health` returns `200`.
 
@@ -302,7 +318,8 @@ src
 │   ├── UploadService              # Web API — upload endpoint
 │   ├── DocumentIngestionService    # Worker — extract, chunk, persist
 │   ├── EmbeddingService            # Worker — embed, upsert to Qdrant
-│   └── SearchService               # Web API — embed query, vector search, rerank
+│   └── SearchService               # Web API — embed query, vector search, rerank,
+│                                    # prompt build + Gemini answer generation
 │
 ├── Tests
 │   ├── UploadService.Tests
@@ -327,9 +344,10 @@ src
 | Embedding Model Runtime | Ollama (`nomic-embed-text`, 768-dim) |
 | Vector Store | Qdrant (Cosine similarity) |
 | Re-ranking | Hugging Face Text Embeddings Inference (`BAAI/bge-reranker-v2-m3`) |
+| RAG Answer Generation | Google Gemini (`gemini-flash-lite-latest`, free tier) |
 | Containerization | Docker / Docker Compose |
 | Architecture | Microservices, event-driven |
-| Future Search | BM25, hybrid retrieval, RAG |
+| Future Search | BM25, hybrid retrieval |
 
 ---
 
@@ -395,8 +413,8 @@ src
 - [x] Vector Store
 - [x] Semantic Search (query API)
 - [x] Re-ranking (cross-encoder via TEI)
+- [x] RAG (prompt builder + Google Gemini answer generation)
 - [ ] Hybrid Retrieval (blend with keyword search)
-- [ ] RAG
 
 ---
 
@@ -413,6 +431,8 @@ git clone https://github.com/Sanket9326/Distributed-Search-Engine.git
 ```bash
 cp .env.example .env
 ```
+
+Set `GEMINI_API_KEY` in `.env` to a free key from [Google AI Studio](https://aistudio.google.com/apikey) if you want the RAG answer endpoint (`POST /api/search/answer`) to work — plain semantic search (`POST /api/search`) doesn't need it.
 
 ### Start Infrastructure + Services
 
@@ -466,6 +486,21 @@ Content-Type: application/json
 
 `departments` here must overlap what the document was uploaded with, or the result set is empty by design (department is an authorization filter, not a ranking signal).
 
+**3. Get a generated answer instead of raw chunks** (requires `GEMINI_API_KEY` in `.env`)
+
+```
+POST http://localhost:8081/api/search/answer
+Content-Type: application/json
+
+{
+  "query": "your question about the document",
+  "departments": ["Finance"],
+  "topK": 5
+}
+```
+
+Response is `{ "answer": "...", "sources": [ { "chunkId", "documentId", "fileName", "chunkIndex", "score" } ] }` — `sources` only lists the chunks that actually made it into the prompt (some low-ranked chunks may be dropped if they don't fit the token budget). If no authorized chunks are found, `answer` is a fixed "no relevant information" message and Gemini is never called.
+
 ---
 
 # 📈 Future Architecture
@@ -489,7 +524,7 @@ Content-Type: application/json
                  Final Search Results
                         │
                         ▼
-                RAG Answer Generation  ⏳ pending
+                RAG Answer Generation  ✅ live today (prompt builder + Google Gemini)
 ```
 
 ---
