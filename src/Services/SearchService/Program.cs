@@ -21,6 +21,15 @@ builder.Services.AddSerilog((services, cfg) => cfg
 
 builder.AddSharedObservability();
 
+var webUiOrigin = builder.Configuration["Cors:WebUiOrigin"] ?? "http://localhost:4200";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("WebUi", policy => policy
+        .WithOrigins(webUiOrigin)
+        .AllowAnyMethod()
+        .AllowAnyHeader());
+});
+
 var qdrantOptions = builder.Configuration.GetSection(QdrantOptions.SectionName).Get<QdrantOptions>() ?? new QdrantOptions();
 var ollamaOptions = builder.Configuration.GetSection(OllamaOptions.SectionName).Get<OllamaOptions>() ?? new OllamaOptions();
 var teiOptions = builder.Configuration.GetSection(TeiOptions.SectionName).Get<TeiOptions>() ?? new TeiOptions();
@@ -57,6 +66,8 @@ builder.Services.AddControllers();
 var app = builder.Build();
 
 app.UseHttpsRedirection();
+
+app.UseCors("WebUi");
 
 app.UseAuthorization();
 

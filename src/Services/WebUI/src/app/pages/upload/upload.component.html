@@ -1,0 +1,69 @@
+<div class="mx-auto max-w-3xl px-6 py-10">
+  <h1 class="mb-1 text-2xl font-bold text-slate-800">Upload a Document</h1>
+  <p class="mb-6 text-slate-500">
+    Upload a file and choose which departments are authorized to search over it.
+  </p>
+
+  <mat-card class="!rounded-2xl !shadow-sm">
+    <mat-card-content class="flex flex-col gap-5 p-6">
+      <div
+        class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition-colors hover:border-indigo-400 hover:bg-indigo-50"
+        (drop)="onDrop($event)"
+        (dragover)="onDragOver($event)"
+        (click)="fileInput.click()"
+      >
+        <mat-icon class="!h-10 !w-10 !text-4xl text-indigo-400">cloud_upload</mat-icon>
+        @if (selectedFile(); as file) {
+          <span class="font-medium text-slate-700">{{ file.name }}</span>
+          <span class="text-sm text-slate-400">{{ (file.size / 1024).toFixed(1) }} KB &middot; click or drop to replace</span>
+        } @else {
+          <span class="font-medium text-slate-700">Click to browse or drag a file here</span>
+          <span class="text-sm text-slate-400">PDF, DOCX, or TXT</span>
+        }
+      </div>
+      <input #fileInput type="file" class="hidden" accept=".pdf,.docx,.txt" (change)="onFileSelected($event)" />
+
+      <mat-form-field appearance="outline" class="w-full">
+        <mat-label>Authorized departments</mat-label>
+        <mat-select [(ngModel)]="selectedDepartments" multiple>
+          @for (dept of departments; track dept) {
+            <mat-option [value]="dept">{{ departmentLabels[dept] }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <button
+        mat-flat-button
+        color="primary"
+        class="!h-11 self-end !rounded-full !px-6"
+        [disabled]="!canUpload()"
+        (click)="upload()"
+      >
+        @if (isUploading()) {
+          <mat-spinner diameter="20" class="!inline-block"></mat-spinner>
+        } @else {
+          <span class="flex items-center gap-2"><mat-icon>upload</mat-icon> Upload</span>
+        }
+      </button>
+    </mat-card-content>
+  </mat-card>
+
+  @if (recentUploads().length > 0) {
+    <h2 class="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-slate-400">
+      Uploaded this session
+    </h2>
+    <div class="flex flex-col gap-2">
+      @for (doc of recentUploads(); track doc.documentId) {
+        <mat-card class="!rounded-xl !shadow-none !border !border-slate-200">
+          <mat-card-content class="flex items-center gap-3 !p-4">
+            <mat-icon class="text-emerald-500">check_circle</mat-icon>
+            <div class="flex flex-col">
+              <span class="font-medium text-slate-700">{{ doc.fileName }}</span>
+              <span class="text-xs text-slate-400">{{ doc.uploadedAtUtc | date: 'medium' }}</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      }
+    </div>
+  }
+</div>
