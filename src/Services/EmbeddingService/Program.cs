@@ -1,18 +1,42 @@
+using Common.Extensions;
+using Confluent.Kafka;
 using Consumers;
 using HostedServices;
 using Infrastructure;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Persistence;
+using Prometheus;
 using Repositories;
+using Serilog;
+using Serilog.Formatting.Compact;
 using Services;
 using Services.Embedding;
 using Services.VectorStorage;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
+builder.Services.AddSerilog((services, cfg) => cfg
+    .ReadFrom.Services(services)
+    .Enrich.WithProperty("Service", "EmbeddingService")
+    .WriteTo.Console(new CompactJsonFormatter()));
+
+builder.AddSharedObservability();
+
+var postgresHealthSettings = builder.Configuration.GetSection(PostgresSettings.SectionName).Get<PostgresSettings>() ?? new PostgresSettings();
+var kafkaHealthSettings = builder.Configuration.GetSection(KafkaConsumerSettings.SectionName).Get<KafkaConsumerSettings>() ?? new KafkaConsumerSettings();
+var qdrantHealthOptions = builder.Configuration.GetSection(QdrantOptions.SectionName).Get<QdrantOptions>() ?? new QdrantOptions();
+var ollamaHealthOptions = builder.Configuration.GetSection(OllamaOptions.SectionName).Get<OllamaOptions>() ?? new OllamaOptions();
+
+builder.Services.AddHealthChecks()
+    .AddNpgSql(postgresHealthSettings.ConnectionString, name: "postgres")
+    .AddKafka(config =>
+    {
+        config.BootstrapServers = kafkaHealthSettings.BootstrapServers;
+    }, name: "kafka")
+    .AddUrlGroup(new Uri($"http://{qdrantHealthOptions.Endpoint}:{qdrantHealthOptions.RestPort}/healthz"), name: "qdrant")
+    .AddUrlGroup(new Uri(ollamaHealthOptions.Endpoint), name: "ollama");
 
 builder.Services.Configure<KafkaConsumerSettings>(builder.Configuration.GetSection(KafkaConsumerSettings.SectionName));
 builder.Services.AddScoped<IChunksCreatedConsumer, ChunksCreatedConsumer>();
@@ -36,12 +60,17 @@ builder.Services.AddHostedService<OllamaModelInitializer>();
 
 builder.Services.AddScoped<IEmbeddingProcessingService, EmbeddingProcessingService>();
 
-var host = builder.Build();
+var app = builder.Build();
 
-using (var scope = host.Services.CreateScope())
+using (var scope = app.Services.CreateScope())
 {
     var vectorStore = scope.ServiceProvider.GetRequiredService<IVectorStore>();
     await vectorStore.EnsureCollectionAsync();
 }
 
-host.Run();
+app.UseHttpMetrics();
+app.MapMetrics();
+app.MapHealthChecks("/health", new HealthCheckOptions { ResponseWriter = HealthCheckResponseWriter.WriteJson });
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+
+app.Run();

@@ -6,6 +6,7 @@ using Entities;
 using Exceptions;
 using Infrastructure;
 using Microsoft.Extensions.Options;
+using Prometheus;
 using Repositories;
 using Services.Chunking;
 using Services.TextExtraction;
@@ -20,6 +21,9 @@ public interface IDocumentProcessingService
 
 public sealed class DocumentProcessingService : IDocumentProcessingService
 {
+    private static readonly Counter DocumentsIngestedTotal = Metrics.CreateCounter(
+        "documents_ingested_total", "Number of documents successfully chunked and ingested");
+
     private readonly IDocumentMetadataRepository _metadataRepository;
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly IFileStorage _fileStorage;
@@ -127,6 +131,8 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
             {
                 _logger.LogInformation("Document '{DocumentId}' chunked into {ChunkCount} chunks.", message.DocumentId, chunks.Count);
             }
+
+            DocumentsIngestedTotal.Inc();
         }
         catch (UnsupportedFileTypeException ex)
         {

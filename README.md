@@ -16,6 +16,8 @@
 ![Ollama](https://img.shields.io/badge/Ollama-Embeddings-000000?style=for-the-badge&logo=ollama&logoColor=white)
 ![TEI](https://img.shields.io/badge/HF%20TEI-Cross--Encoder%20Reranker-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-RAG%20Answer%20Generation-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-Metrics%20%26%20Health-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)
+![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?style=for-the-badge&logo=grafana&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 </div>
@@ -63,6 +65,11 @@ The objective is to build every major search engine component from scratch inste
 | 🔐 Department-filtered retrieval on search | ✅ |
 | 🧩 Token-budgeted prompt builder over re-ranked chunks | ✅ |
 | 💬 RAG Answer API (`POST /api/search/answer`, Google Gemini) | ✅ |
+| 📈 Prometheus metrics (`/metrics`) on every .NET service | ✅ |
+| 🩺 Dependency-aware health checks (`/health`, `/health/live`) | ✅ |
+| 🐳 Per-container CPU/memory/network metrics (cAdvisor) | ✅ |
+| 📊 Grafana dashboards (auto-provisioned) | ✅ |
+| 📝 Structured JSON logging (Serilog) | ✅ |
 | ⚡ BM25 / keyword search | ⏳ |
 | 🔄 Hybrid retrieval (keyword + semantic) | ⏳ |
 
@@ -225,8 +232,8 @@ style Gemini fill:#4285F4,color:#fff
 | Service | Type | Port | Responsibility |
 |---|---|---|---|
 | **Upload Service** | ASP.NET Core Web API | `8080` | Validates + accepts uploads, stores the file in MinIO, publishes `DocumentUploadedEvent` |
-| **Document Ingestion Service** | Background worker | — | Downloads the file, extracts text, chunks it, persists chunks/metadata to Postgres, publishes `ChunksCreatedEvent` |
-| **Embedding Service** | Background worker | — | Reads chunks for a document, generates embeddings via Ollama, upserts vectors + payload into Qdrant, tracks status |
+| **Document Ingestion Service** | Background worker + minimal HTTP (`/health`, `/metrics`) | `8083` | Downloads the file, extracts text, chunks it, persists chunks/metadata to Postgres, publishes `ChunksCreatedEvent` |
+| **Embedding Service** | Background worker + minimal HTTP (`/health`, `/metrics`) | `8084` | Reads chunks for a document, generates embeddings via Ollama, upserts vectors + payload into Qdrant, tracks status |
 | **Search Service** | ASP.NET Core Web API | `8081` | Embeds the query (Ollama), runs a department-filtered vector search against Qdrant, re-ranks candidates via a TEI cross-encoder, returns top-K results (`POST /api/search`); optionally builds a token-budgeted prompt from those chunks and generates a grounded, cited answer via Google Gemini (`POST /api/search/answer`) |
 
 ### External inference dependencies
@@ -245,6 +252,34 @@ style Gemini fill:#4285F4,color:#fff
 |---|---|---|---|
 | `DocumentIngestion` | Upload Service | Document Ingestion Service | `DocumentUploadedEvent` — `DocumentId`, `FileName`, `ContentType`, `AuthorizedDepartments`, `UploadedAtUtc` |
 | `ChunksCreated` | Document Ingestion Service | Embedding Service | `ChunksCreatedEvent` — `DocumentId`, `ChunkCount`, `CreatedAtUtc` |
+
+---
+
+# 📊 Observability
+
+Every .NET service exposes the same three endpoints (via a shared `Common.Extensions` wiring, `src/BuildingBlocks/Common/Extensions/`):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /metrics` | Prometheus exposition format — generic HTTP request rate/latency (`prometheus-net`) plus one domain-specific counter per service (`documents_uploaded_total`, `documents_ingested_total`, `chunks_embedded_total`, `rag_answers_generated_total`) |
+| `GET /health` | Real dependency checks (Postgres, Kafka, Qdrant, MinIO, Ollama, TEI reranker; Gemini is a config-presence check only — see note below) as readable JSON, e.g. `{ "status": "Healthy", "checks": [...] }` |
+| `GET /health/live` | Liveness only — always `200` if the process is up, no dependency calls |
+
+Health results are also republished as a `health_check_status` Prometheus gauge (1 = healthy, 0.5 = degraded, 0 = unhealthy) every 15s, so health shows up in Grafana from the same datasource as everything else — no separate JSON-API datasource needed.
+
+> ⚠️ Gemini's health check never makes a live API call — it only checks that `GEMINI_API_KEY` is configured. Free-tier Gemini quotas are tight enough that a live call on every 15s health poll would compete with actual answer generation for the same budget.
+
+### Stack
+
+| Component | Role | Port |
+|---|---|---|
+| **Prometheus** | Scrapes `/metrics` from all 4 .NET services + cAdvisor every 15s | `9090` |
+| **Grafana** | Auto-provisioned Prometheus datasource + a "System Overview" dashboard (per-service health, request rate/latency, domain counters, per-container CPU/memory/network) | `3000` (default login `admin` / `GRAFANA_ADMIN_PASSWORD`) |
+| **cAdvisor** | Reports CPU/memory/network for every container in the stack (not just the .NET services) | `8085` |
+
+Config lives in `observability/prometheus/prometheus.yml` and `observability/grafana/provisioning/`. Structured logging (Serilog, JSON to console) is wired into every service but isn't shipped anywhere yet — check logs via `docker compose logs <service>`; log aggregation (e.g. Loki) is a deliberately deferred follow-up.
+
+> ⚠️ **cAdvisor on Docker Desktop (Windows/Mac)**: cAdvisor's per-container CPU/memory/network breakdown relies on inspecting each container's overlay filesystem layer directly, which only works reliably on a native Linux Docker host. On Docker Desktop for Windows/Mac (containers running inside an internal VM), cAdvisor can't resolve individual container layers and only reports Docker Desktop's own internal cgroup slices (`/docker`, `/kubepods`, ...) instead of per-service names — the "Container Resources" dashboard row will be empty/unhelpful there. Everything else (health, metrics, dashboards, per-service panels) is unaffected and works identically on any platform.
 
 ---
 
@@ -312,7 +347,13 @@ src
 │   ├── Contracts           # Shared events (DocumentUploadedEvent, ChunksCreatedEvent)
 │   │                       # and enums (DocumentProcessingStatus, Department)
 │   ├── Infrastructure      # IKafkaProducer, IFileStorage, IMinioStorage, IEmbeddingGenerator
-│   └── Common              # File validation, GUID generation, department parsing, text sanitization
+│   └── Common              # File validation, GUID generation, department parsing, text sanitization,
+│                           # shared observability wiring (Extensions/) — Prometheus health-check
+│                           # publisher, /health JSON writer, used identically by all 4 services
+│
+├── observability
+│   ├── prometheus          # prometheus.yml scrape config
+│   └── grafana/provisioning  # datasource + auto-provisioned dashboard
 │
 ├── Services
 │   ├── UploadService              # Web API — upload endpoint
@@ -345,6 +386,10 @@ src
 | Vector Store | Qdrant (Cosine similarity) |
 | Re-ranking | Hugging Face Text Embeddings Inference (`BAAI/bge-reranker-v2-m3`) |
 | RAG Answer Generation | Google Gemini (`gemini-flash-lite-latest`, free tier) |
+| Metrics | Prometheus + `prometheus-net.AspNetCore` |
+| Dashboards | Grafana (auto-provisioned) |
+| Container Metrics | cAdvisor |
+| Structured Logging | Serilog (JSON to console) |
 | Containerization | Docker / Docker Compose |
 | Architecture | Microservices, event-driven |
 | Future Search | BM25, hybrid retrieval |
@@ -440,7 +485,7 @@ Set `GEMINI_API_KEY` in `.env` to a free key from [Google AI Studio](https://ais
 docker compose up -d --build
 ```
 
-This brings up Postgres, pgAdmin, MinIO, Kafka, Qdrant, Ollama, the TEI reranker, and all four .NET services (Upload, Document Ingestion, Embedding, Search).
+This brings up Postgres, pgAdmin, MinIO, Kafka, Qdrant, Ollama, the TEI reranker, all four .NET services (Upload, Document Ingestion, Embedding, Search), and the observability stack (Prometheus, Grafana, cAdvisor).
 
 On first run:
 - **Ollama** needs the `nomic-embed-text` model pulled — `docker exec -it document-search-ollama ollama pull nomic-embed-text` if it isn't already cached.
@@ -500,6 +545,10 @@ Content-Type: application/json
 ```
 
 Response is `{ "answer": "...", "sources": [ { "chunkId", "documentId", "fileName", "chunkIndex", "score" } ] }` — `sources` only lists the chunks that actually made it into the prompt (some low-ranked chunks may be dropped if they don't fit the token budget). If no authorized chunks are found, `answer` is a fixed "no relevant information" message and Gemini is never called.
+
+**4. Watch it all in Grafana**
+
+Open `http://localhost:3000` (login `admin` / whatever you set `GRAFANA_ADMIN_PASSWORD` to) — the "System Overview" dashboard is auto-provisioned, no manual setup needed. It shows live health status per service, request rate/latency, the domain counters above (documents uploaded/ingested, chunks embedded, RAG answers generated), and per-container CPU/memory/network from cAdvisor. Prometheus itself is at `http://localhost:9090` if you want to run raw PromQL queries or check `/targets` for scrape health.
 
 ---
 

@@ -1,5 +1,6 @@
 using Common.TextProcessing;
 using Dtos;
+using Prometheus;
 using Services.Llm;
 using Services.Prompting;
 
@@ -13,6 +14,9 @@ public interface IAnswerService
 public sealed class AnswerService : IAnswerService
 {
     private const string NoResultsAnswer = "No relevant information was found for this query.";
+
+    private static readonly Counter RagAnswersGeneratedTotal = Metrics.CreateCounter(
+        "rag_answers_generated_total", "Number of RAG answers generated via Gemini");
 
     private readonly ISearchProcessingService _searchProcessingService;
     private readonly IPromptBuilder _promptBuilder;
@@ -44,6 +48,8 @@ public sealed class AnswerService : IAnswerService
             .Where(r => prompt.IncludedChunkIds.Contains(r.ChunkId))
             .Select(ToSource)
             .ToList();
+
+        RagAnswersGeneratedTotal.Inc();
 
         return new AnswerResponse { Answer = completion.Text, Sources = sources };
     }

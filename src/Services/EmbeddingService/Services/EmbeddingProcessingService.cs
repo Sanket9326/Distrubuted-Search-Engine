@@ -1,6 +1,7 @@
 using Contracts;
 using Contracts.Events;
 using Infrastructure;
+using Prometheus;
 using Repositories;
 using Services.VectorStorage;
 
@@ -13,6 +14,9 @@ public interface IEmbeddingProcessingService
 
 public sealed class EmbeddingProcessingService : IEmbeddingProcessingService
 {
+    private static readonly Counter ChunksEmbeddedTotal = Metrics.CreateCounter(
+        "chunks_embedded_total", "Number of chunks successfully embedded and upserted into Qdrant");
+
     private readonly IDocumentChunkReadRepository _chunkRepository;
     private readonly IDocumentMetadataStatusRepository _metadataStatusRepository;
     private readonly IEmbeddingGenerator _embeddingGenerator;
@@ -62,6 +66,8 @@ public sealed class EmbeddingProcessingService : IEmbeddingProcessingService
             await _vectorStore.UpsertAsync(embeddedChunks, cancellationToken);
 
             await _metadataStatusRepository.UpdateStatusAsync(message.DocumentId, DocumentProcessingStatus.Embedded, null, cancellationToken);
+
+            ChunksEmbeddedTotal.Inc(chunks.Count);
 
             _logger.LogInformation("Document '{DocumentId}' embedded into {ChunkCount} vectors.", message.DocumentId, chunks.Count);
         }
