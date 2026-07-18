@@ -4,7 +4,7 @@
 
 <p>
 <a href="https://github.com/Sanket9326">
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&pause=1200&color=00C9A7&center=true&vCenter=true&width=850&lines=Upload+%E2%86%92+Store+%E2%86%92+Publish+%E2%86%92+Ingest+%E2%86%92+Chunk+%E2%86%92+Embed+%E2%86%92+Search+%E2%86%92+Answer;Distributed+Microservices+Built+with+.NET+10;Apache+Kafka+%7C+PostgreSQL+%7C+MinIO+%7C+Qdrant+%7C+Ollama;Semantic+Search+%2B+Cross-Encoder+Re-ranking+%2B+RAG+%28Gemini%29%3B+Next%3A+Hybrid+Retrieval" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&pause=1200&color=00C9A7&center=true&vCenter=true&width=850&lines=Upload+%E2%86%92+Store+%E2%86%92+Publish+%E2%86%92+Ingest+%E2%86%92+Chunk+%E2%86%92+Embed+%E2%86%92+Search+%E2%86%92+Answer;Distributed+Microservices+Built+with+.NET+10;Apache+Kafka+%7C+PostgreSQL+%7C+MinIO+%7C+Qdrant+%7C+Ollama;Semantic+Search+%2B+RAG+%28Gemini%29+%2B+Angular+UI+%2B+Observability%3B+Next%3A+Hybrid+Retrieval" />
 </a>
 </p>
 
@@ -18,6 +18,7 @@
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-RAG%20Answer%20Generation-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
 ![Prometheus](https://img.shields.io/badge/Prometheus-Metrics%20%26%20Health-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)
 ![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?style=for-the-badge&logo=grafana&logoColor=white)
+![Angular](https://img.shields.io/badge/Angular-Web%20UI-DD0031?style=for-the-badge&logo=angular&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 </div>
@@ -41,7 +42,7 @@ The platform starts with document uploads and progressively evolves into a compl
 
 The objective is to build every major search engine component from scratch instead of relying on existing search platforms.
 
-**Where things stand today:** the full pipeline is end to end — a document can be uploaded, stored, chunked, embedded, landed as a filterable vector in Qdrant, and **queried back through a semantic Search API** with cross-encoder re-ranking. On top of that, a **RAG answer endpoint** now takes those re-ranked chunks, builds a token-budgeted prompt, and calls Google Gemini to return a grounded, cited natural-language answer. Keyword/BM25 search and hybrid retrieval are the next phase.
+**Where things stand today:** the full pipeline is end to end — a document can be uploaded, stored, chunked, embedded, landed as a filterable vector in Qdrant, and **queried back through a semantic Search API** with cross-encoder re-ranking. On top of that, a **RAG answer endpoint** now takes those re-ranked chunks, builds a token-budgeted prompt, and calls Google Gemini to return a grounded, cited natural-language answer. An **Angular Web UI** now sits in front of both (upload + a chat-style ask page + a live metrics dashboard), so the whole thing is usable from a browser, not just `curl`. Keyword/BM25 search and hybrid retrieval are the next phase.
 
 ---
 
@@ -70,6 +71,7 @@ The objective is to build every major search engine component from scratch inste
 | 🐳 Per-container CPU/memory/network metrics (cAdvisor) | ✅ |
 | 📊 Grafana dashboards (auto-provisioned) | ✅ |
 | 📝 Structured JSON logging (Serilog) | ✅ |
+| 🖥 Angular Web UI (upload, RAG chat, live metrics) | ✅ |
 | ⚡ BM25 / keyword search | ⏳ |
 | 🔄 Hybrid retrieval (keyword + semantic) | ⏳ |
 
@@ -80,7 +82,9 @@ The objective is to build every major search engine component from scratch inste
 ```mermaid
 flowchart LR
 
-Client([Client])
+Client([Browser])
+
+WebUI[Web UI - Angular]
 
 API[Upload Service]
 
@@ -106,7 +110,9 @@ Reranker[(TEI Reranker)]
 
 Gemini[(Google Gemini)]
 
-Client -->|Upload file + departments| API
+Client --> WebUI
+
+WebUI -->|Upload file + departments| API
 
 API -->|Store Document| MinIO
 
@@ -126,7 +132,9 @@ Embed -->|Generate embeddings| Ollama
 
 Embed -->|Upsert vectors + payload| Qdrant
 
-Client -->|Query + departments| Search
+WebUI -->|Query + departments| Search
+
+WebUI -.->|PromQL, direct from browser| Prometheus[(Prometheus)]
 
 Search -->|Embed query| Ollama
 
@@ -138,6 +146,7 @@ Search -->|Prompt-build + generate answer| Gemini
 
 style API fill:#00c9a7,color:#000
 style Search fill:#00c9a7,color:#000
+style WebUI fill:#DD0031,color:#fff
 style Worker fill:#203A43,color:#fff
 style Embed fill:#203A43,color:#fff
 style Kafka1 fill:#231F20,color:#fff
@@ -148,6 +157,7 @@ style Qdrant fill:#DC244C,color:#fff
 style Ollama fill:#000000,color:#fff
 style Reranker fill:#FFD21E,color:#000
 style Gemini fill:#4285F4,color:#fff
+style Prometheus fill:#E6522C,color:#fff
 ```
 
 ---
@@ -235,6 +245,7 @@ style Gemini fill:#4285F4,color:#fff
 | **Document Ingestion Service** | Background worker + minimal HTTP (`/health`, `/metrics`) | `8083` | Downloads the file, extracts text, chunks it, persists chunks/metadata to Postgres, publishes `ChunksCreatedEvent` |
 | **Embedding Service** | Background worker + minimal HTTP (`/health`, `/metrics`) | `8084` | Reads chunks for a document, generates embeddings via Ollama, upserts vectors + payload into Qdrant, tracks status |
 | **Search Service** | ASP.NET Core Web API | `8081` | Embeds the query (Ollama), runs a department-filtered vector search against Qdrant, re-ranks candidates via a TEI cross-encoder, returns top-K results (`POST /api/search`); optionally builds a token-budgeted prompt from those chunks and generates a grounded, cited answer via Google Gemini (`POST /api/search/answer`) |
+| **Web UI** | Angular SPA (nginx-served) | `4200` | Browser client: upload page, RAG chat ("Ask") page, live metrics dashboard |
 
 ### External inference dependencies
 
@@ -280,6 +291,24 @@ Health results are also republished as a `health_check_status` Prometheus gauge 
 Config lives in `observability/prometheus/prometheus.yml` and `observability/grafana/provisioning/`. Structured logging (Serilog, JSON to console) is wired into every service but isn't shipped anywhere yet — check logs via `docker compose logs <service>`; log aggregation (e.g. Loki) is a deliberately deferred follow-up.
 
 > ⚠️ **cAdvisor on Docker Desktop (Windows/Mac)**: cAdvisor's per-container CPU/memory/network breakdown relies on inspecting each container's overlay filesystem layer directly, which only works reliably on a native Linux Docker host. On Docker Desktop for Windows/Mac (containers running inside an internal VM), cAdvisor can't resolve individual container layers and only reports Docker Desktop's own internal cgroup slices (`/docker`, `/kubepods`, ...) instead of per-service names — the "Container Resources" dashboard row will be empty/unhelpful there. Everything else (health, metrics, dashboards, per-service panels) is unaffected and works identically on any platform.
+
+---
+
+# 🖥 Web UI
+
+An Angular SPA (`src/Services/WebUI`) at `http://localhost:4200`, containerized and served via nginx — three pages:
+
+| Page | Route | Calls | Description |
+|---|---|---|---|
+| **Upload** | `/upload` | `POST http://localhost:8080/api/FileHandler/upload` | Drag-and-drop file zone + multi-select department picker |
+| **Ask** | `/ask` | `POST http://localhost:8081/api/search/answer` | Chat-style RAG Q&A; pick "your department" (single-select stand-in until real auth exists), see the cited answer + sources |
+| **Metrics** | `/metrics` | Prometheus HTTP API directly (`http://localhost:9090`) | Fully custom dashboard (not a Grafana embed) — service health tiles, domain counters, request rate/latency, per-container resources — polling every 15s |
+
+**Stack:** Angular 19 (standalone components, signals), Angular Material + Tailwind CSS for styling, `ngx-echarts`/Apache ECharts for the metrics charts.
+
+The browser always talks to the host-mapped ports (`localhost:8080`/`:8081`/`:9090`), never the internal docker-network hostnames — configured once in `src/environments/environment.ts`. This is also the first browser client in the repo, so CORS is enabled specifically for the UI's origin on `UploadService`, `SearchService` (`Cors:WebUiOrigin` config, defaults to `http://localhost:4200`), and Prometheus (`--web.cors.origin` flag in `docker-compose.yml`).
+
+> Note: there's no authentication anywhere in this repo yet. The Ask page's department picker is a manual stand-in for "the logged-in user's department" — a placeholder until real auth is added, not a security boundary.
 
 ---
 
@@ -359,8 +388,9 @@ src
 │   ├── UploadService              # Web API — upload endpoint
 │   ├── DocumentIngestionService    # Worker — extract, chunk, persist
 │   ├── EmbeddingService            # Worker — embed, upsert to Qdrant
-│   └── SearchService               # Web API — embed query, vector search, rerank,
-│                                    # prompt build + Gemini answer generation
+│   ├── SearchService                # Web API — embed query, vector search, rerank,
+│   │                                # prompt build + Gemini answer generation
+│   └── WebUI                        # Angular SPA — upload, RAG chat, live metrics dashboard
 │
 ├── Tests
 │   ├── UploadService.Tests
@@ -390,6 +420,9 @@ src
 | Dashboards | Grafana (auto-provisioned) |
 | Container Metrics | cAdvisor |
 | Structured Logging | Serilog (JSON to console) |
+| Web UI | Angular 19 (standalone, signals) |
+| UI Styling | Angular Material + Tailwind CSS |
+| UI Charts | ngx-echarts (Apache ECharts) |
 | Containerization | Docker / Docker Compose |
 | Architecture | Microservices, event-driven |
 | Future Search | BM25, hybrid retrieval |
@@ -485,7 +518,7 @@ Set `GEMINI_API_KEY` in `.env` to a free key from [Google AI Studio](https://ais
 docker compose up -d --build
 ```
 
-This brings up Postgres, pgAdmin, MinIO, Kafka, Qdrant, Ollama, the TEI reranker, all four .NET services (Upload, Document Ingestion, Embedding, Search), and the observability stack (Prometheus, Grafana, cAdvisor).
+This brings up Postgres, pgAdmin, MinIO, Kafka, Qdrant, Ollama, the TEI reranker, all four .NET services (Upload, Document Ingestion, Embedding, Search), the Angular Web UI, and the observability stack (Prometheus, Grafana, cAdvisor).
 
 On first run:
 - **Ollama** needs the `nomic-embed-text` model pulled — `docker exec -it document-search-ollama ollama pull nomic-embed-text` if it isn't already cached.
@@ -499,6 +532,8 @@ dotnet test
 ```
 
 ### Try it
+
+The fastest way is the Web UI at `http://localhost:4200` — an **Upload** page, a chat-style **Ask** page, and a live **Metrics** dashboard, covering everything below without needing `curl`/Postman. The steps below show the same flow via raw HTTP, useful for scripting or understanding the exact contracts the UI itself calls.
 
 **1. Upload a document**
 
@@ -546,9 +581,9 @@ Content-Type: application/json
 
 Response is `{ "answer": "...", "sources": [ { "chunkId", "documentId", "fileName", "chunkIndex", "score" } ] }` — `sources` only lists the chunks that actually made it into the prompt (some low-ranked chunks may be dropped if they don't fit the token budget). If no authorized chunks are found, `answer` is a fixed "no relevant information" message and Gemini is never called.
 
-**4. Watch it all in Grafana**
+**4. Watch it all live**
 
-Open `http://localhost:3000` (login `admin` / whatever you set `GRAFANA_ADMIN_PASSWORD` to) — the "System Overview" dashboard is auto-provisioned, no manual setup needed. It shows live health status per service, request rate/latency, the domain counters above (documents uploaded/ingested, chunks embedded, RAG answers generated), and per-container CPU/memory/network from cAdvisor. Prometheus itself is at `http://localhost:9090` if you want to run raw PromQL queries or check `/targets` for scrape health.
+Open `http://localhost:4200/metrics` for the built-in Web UI dashboard, or `http://localhost:3000` for Grafana (login `admin` / whatever you set `GRAFANA_ADMIN_PASSWORD` to, dashboard auto-provisioned). Both show live health status per service, request rate/latency, the domain counters above (documents uploaded/ingested, chunks embedded, RAG answers generated), and per-container CPU/memory/network from cAdvisor. Prometheus itself is at `http://localhost:9090` if you want to run raw PromQL queries or check `/targets` for scrape health.
 
 ---
 
