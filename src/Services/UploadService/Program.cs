@@ -19,6 +19,15 @@ builder.Services.AddSerilog((services, cfg) => cfg
 
 builder.AddSharedObservability();
 
+var webUiOrigin = builder.Configuration["Cors:WebUiOrigin"] ?? "http://localhost:4200";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("WebUi", policy => policy
+        .WithOrigins(webUiOrigin)
+        .AllowAnyMethod()
+        .AllowAnyHeader());
+});
+
 var kafkaHealthSettings = builder.Configuration.GetSection(KafkaSettings.SectionName).Get<KafkaSettings>() ?? new KafkaSettings();
 var minioHealthSettings = builder.Configuration.GetSection(MinioSettings.SectionName).Get<MinioSettings>() ?? new MinioSettings();
 var minioScheme = minioHealthSettings.UseSSL ? "https" : "http";
@@ -48,6 +57,8 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 
 app.UseHttpsRedirection();
+
+app.UseCors("WebUi");
 
 app.UseAuthorization();
 

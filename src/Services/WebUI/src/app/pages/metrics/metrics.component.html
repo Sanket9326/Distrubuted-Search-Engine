@@ -1,0 +1,95 @@
+<div class="mx-auto max-w-6xl px-6 py-8">
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800">System Metrics</h1>
+      <p class="text-sm text-slate-500">Live from Prometheus &middot; refreshes every 15s</p>
+    </div>
+    @if (lastUpdated(); as updated) {
+      <span class="text-xs text-slate-400">Updated {{ updated | date: 'HH:mm:ss' }}</span>
+    }
+  </div>
+
+  <!-- Health tiles -->
+  <div class="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+    @for (svc of serviceHealth(); track svc.key) {
+      <mat-card
+        class="!rounded-2xl !shadow-sm !border-0 !text-white transition-colors"
+        [class.!bg-emerald-500]="svc.status === 'healthy'"
+        [class.!bg-amber-500]="svc.status === 'degraded'"
+        [class.!bg-rose-500]="svc.status === 'unhealthy'"
+        [class.!bg-slate-300]="svc.status === 'unknown'"
+      >
+        <mat-card-content class="flex flex-col gap-1 !p-4">
+          <span class="text-xs font-medium uppercase tracking-wide opacity-80">{{ svc.label }}</span>
+          <div class="flex items-center gap-1.5 text-lg font-semibold capitalize">
+            <mat-icon class="!h-5 !w-5 !text-lg">
+              {{ svc.status === 'healthy' ? 'check_circle' : svc.status === 'unhealthy' ? 'error' : 'help' }}
+            </mat-icon>
+            {{ svc.status }}
+          </div>
+        </mat-card-content>
+      </mat-card>
+    }
+  </div>
+
+  <!-- Domain counters -->
+  <div class="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+    @for (counter of counters(); track counter.label) {
+      <mat-card class="!rounded-2xl !shadow-sm !border !border-slate-200">
+        <mat-card-content class="flex flex-col gap-1 !p-4">
+          <span class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ counter.label }}</span>
+          <span class="text-2xl font-bold text-indigo-600">
+            {{ counter.value | number: '1.0-1' }}
+            <span class="text-sm font-normal text-slate-400">{{ counter.unit }}</span>
+          </span>
+        </mat-card-content>
+      </mat-card>
+    }
+  </div>
+
+  <!-- Request rate + latency -->
+  <div class="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <mat-card class="!rounded-2xl !shadow-sm">
+      <mat-card-content class="!p-4">
+        <h2 class="mb-2 text-sm font-semibold text-slate-600">Request Rate</h2>
+        @if (requestRateOption(); as option) {
+          <div echarts [options]="option" class="h-64 w-full"></div>
+        }
+      </mat-card-content>
+    </mat-card>
+    <mat-card class="!rounded-2xl !shadow-sm">
+      <mat-card-content class="!p-4">
+        <h2 class="mb-2 text-sm font-semibold text-slate-600">Latency (p95)</h2>
+        @if (latencyOption(); as option) {
+          <div echarts [options]="option" class="h-64 w-full"></div>
+        }
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <!-- Container resources -->
+  <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <mat-card class="!rounded-2xl !shadow-sm">
+      <mat-card-content class="!p-4">
+        <h2 class="mb-2 text-sm font-semibold text-slate-600">CPU Usage per Container</h2>
+        @if (cpuOption(); as option) {
+          <div echarts [options]="option" class="h-64 w-full"></div>
+        }
+      </mat-card-content>
+    </mat-card>
+    <mat-card class="!rounded-2xl !shadow-sm">
+      <mat-card-content class="!p-4">
+        <h2 class="mb-2 text-sm font-semibold text-slate-600">Memory Usage per Container</h2>
+        @if (memoryOption(); as option) {
+          <div echarts [options]="option" class="h-64 w-full"></div>
+        }
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <p class="mt-4 text-xs text-slate-400">
+    Note: on Docker Desktop for Windows/Mac, per-container CPU/memory may show empty or unlabeled series
+    &mdash; cAdvisor can't resolve individual container names in that environment. This works correctly
+    on a native Linux Docker host.
+  </p>
+</div>

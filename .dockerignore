@@ -9,3 +9,6 @@
 *.md
 docs/
 infrastructure/
+**/node_modules/
+**/dist/
+**/.angular/

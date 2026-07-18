@@ -99,6 +99,7 @@ services:
       Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
       Minio__BucketName: ${MINIO_BUCKET_NAME:-documents}
       Minio__UseSSL: "false"
+      Cors__WebUiOrigin: http://localhost:${WEB_UI_PORT:-4200}
     ports:
       - "${UPLOAD_SERVICE_PORT:-8080}:8080"
     depends_on:
@@ -169,12 +170,25 @@ services:
       Gemini__Endpoint: https://generativelanguage.googleapis.com/v1beta/
       Gemini__ApiKey: ${GEMINI_API_KEY}
       Gemini__Model: ${GEMINI_MODEL:-gemini-flash-lite-latest}
+      Cors__WebUiOrigin: http://localhost:${WEB_UI_PORT:-4200}
     ports:
       - "${SEARCH_SERVICE_PORT:-8081}:8080"
     depends_on:
       - qdrant
       - ollama
       - reranker
+
+  web-ui:
+    build:
+      context: .
+      dockerfile: src/Services/WebUI/Dockerfile
+    container_name: document-search-web-ui
+    restart: unless-stopped
+    ports:
+      - "${WEB_UI_PORT:-4200}:80"
+    depends_on:
+      - upload-service
+      - search-service
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
@@ -194,6 +208,10 @@ services:
     image: prom/prometheus:latest
     container_name: document-search-prometheus
     restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.cors.origin=http://localhost:${WEB_UI_PORT:-4200}
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
