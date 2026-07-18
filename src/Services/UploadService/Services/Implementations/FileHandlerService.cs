@@ -1,10 +1,14 @@
 using Common.Utilities;
 using Contracts.Events;
 using Infrastructure;
+using Prometheus;
 using SharedKernel;
 
 public class FileHandlerService : IFileHandlerService
 {
+    private static readonly Counter DocumentsUploadedTotal = Metrics.CreateCounter(
+        "documents_uploaded_total", "Number of documents successfully uploaded");
+
     private readonly ILogger<FileHandlerService> _logger;
     private readonly IKafkaProducer _kafkaProducer;
     private readonly IMinioStorage _minioStorage;
@@ -41,6 +45,8 @@ public class FileHandlerService : IFileHandlerService
             };
 
             await _kafkaProducer.PublishAsync(Constants.KafkaTopics.DocumentIngestion, documentEvent);
+
+            DocumentsUploadedTotal.Inc();
 
             return (true, documentEvent);
         }

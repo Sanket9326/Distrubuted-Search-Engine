@@ -112,6 +112,7 @@ services:
       dockerfile: src/Services/DocumentIngestionService/Dockerfile
     restart: unless-stopped
     environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Production}
       Kafka__BootstrapServers: kafka:29092
       Kafka__GroupId: document-ingestion-service
@@ -121,6 +122,8 @@ services:
       Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
       Minio__BucketName: ${MINIO_BUCKET_NAME:-documents}
       Minio__UseSSL: "false"
+    ports:
+      - "${DOCUMENT_INGESTION_SERVICE_PORT:-8083}:8080"
     depends_on:
       - postgres
       - minio
@@ -132,6 +135,7 @@ services:
       dockerfile: src/Services/EmbeddingService/Dockerfile
     restart: unless-stopped
     environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Production}
       Kafka__BootstrapServers: kafka:29092
       Kafka__GroupId: embedding-service
@@ -141,6 +145,8 @@ services:
       Qdrant__CollectionName: ${QDRANT_COLLECTION_NAME:-document_chunks}
       Ollama__Endpoint: http://ollama:11434
       Ollama__Model: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    ports:
+      - "${EMBEDDING_SERVICE_PORT:-8084}:8080"
     depends_on:
       - postgres
       - kafka
@@ -170,6 +176,50 @@ services:
       - ollama
       - reranker
 
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: document-search-cadvisor
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "${CADVISOR_PORT:-8085}:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: document-search-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - cadvisor
+      - upload-service
+      - document-ingestion-service
+      - embedding-service
+      - search-service
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: document-search-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   postgres-data:
   minio-data:
@@ -177,3 +227,5 @@ volumes:
   qdrant-data:
   ollama-data:
   reranker-data:
+  prometheus-data:
+  grafana-data:

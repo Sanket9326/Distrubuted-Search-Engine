@@ -1,22 +1,45 @@
+using Common.Extensions;
 using Common.FileValidation;
 using Common.Utilities;
+using Confluent.Kafka;
 using Consumers;
 using HostedServices;
 using Infrastructure;
 using Kafka;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Persistence;
+using Prometheus;
 using Repositories;
+using Serilog;
+using Serilog.Formatting.Compact;
 using Services;
 using Services.Chunking;
 using Services.TextExtraction;
 using Storage;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
+builder.Services.AddSerilog((services, cfg) => cfg
+    .ReadFrom.Services(services)
+    .Enrich.WithProperty("Service", "DocumentIngestionService")
+    .WriteTo.Console(new CompactJsonFormatter()));
+
+builder.AddSharedObservability();
+
+var postgresHealthSettings = builder.Configuration.GetSection(PostgresSettings.SectionName).Get<PostgresSettings>() ?? new PostgresSettings();
+var kafkaHealthSettings = builder.Configuration.GetSection(KafkaConsumerSettings.SectionName).Get<KafkaConsumerSettings>() ?? new KafkaConsumerSettings();
+var minioHealthSettings = builder.Configuration.GetSection(MinioSettings.SectionName).Get<MinioSettings>() ?? new MinioSettings();
+var minioScheme = minioHealthSettings.UseSSL ? "https" : "http";
+
+builder.Services.AddHealthChecks()
+    .AddNpgSql(postgresHealthSettings.ConnectionString, name: "postgres")
+    .AddKafka(config =>
+    {
+        config.BootstrapServers = kafkaHealthSettings.BootstrapServers;
+    }, name: "kafka")
+    .AddUrlGroup(new Uri($"{minioScheme}://{minioHealthSettings.Endpoint}/minio/health/live"), name: "minio");
 
 builder.Services.Configure<KafkaConsumerSettings>(builder.Configuration.GetSection(KafkaConsumerSettings.SectionName));
 builder.Services.AddScoped<IDocumentUploadedConsumer, DocumentUploadedConsumer>();
@@ -49,12 +72,17 @@ builder.Services.AddSingleton<IChunkingService, ParagraphAwareChunkingService>()
 
 builder.Services.AddScoped<IDocumentProcessingService, DocumentProcessingService>();
 
-var host = builder.Build();
+var app = builder.Build();
 
-using (var scope = host.Services.CreateScope())
+using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<DocumentIngestionDbContext>();
     await dbContext.Database.MigrateAsync();
 }
 
-host.Run();
+app.UseHttpMetrics();
+app.MapMetrics();
+app.MapHealthChecks("/health", new HealthCheckOptions { ResponseWriter = HealthCheckResponseWriter.WriteJson });
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+
+app.Run();

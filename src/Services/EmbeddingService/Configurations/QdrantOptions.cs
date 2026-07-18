@@ -6,6 +6,8 @@ public sealed class QdrantOptions
 
     public int Port { get; init; } = 6334;
 
+    public int RestPort { get; init; } = 6333;
+
     public string CollectionName { get; init; } = "document_chunks";
 
     public int VectorSize { get; init; } = 768;
