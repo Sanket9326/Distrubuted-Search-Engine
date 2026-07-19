@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <UserSecretsId>dotnet-DocumentIngestionService-027fd285-c459-46d7-a15f-9e63bd84403e</UserSecretsId>
+    <UserSecretsId>dotnet-ReliabilityService-3b6e9f2a-1c4d-4e8b-9a2f-7d5c8b3e6f1a</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,23 +13,23 @@
 
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.Kafka" Version="9.0.0" />
-    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
-    <PackageReference Include="AspNetCore.HealthChecks.Uris" Version="9.0.0" />
     <PackageReference Include="Confluent.Kafka" Version="2.15.0" />
-    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
-    <PackageReference Include="itext7" Version="9.7.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
-    <PackageReference Include="Minio" Version="7.0.0" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
     <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
   </ItemGroup>
+
+  <!--
+    NU1510: NuGet package pruning flags Microsoft.Extensions.DependencyInjection as redundant
+    because it ships in the ASP.NET Core / worker shared framework. It is kept as an explicit
+    PackageReference per the project's approved package list, so the warning is expected here.
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
+  </PropertyGroup>
+
 </Project>

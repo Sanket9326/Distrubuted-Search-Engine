@@ -1,7 +1,9 @@
+using System.Text.Json;
 using Common.FileValidation;
 using Common.TextProcessing;
 using Contracts;
 using Contracts.Events;
+using Contracts.Reliability;
 using Entities;
 using Exceptions;
 using Infrastructure;
@@ -16,7 +18,7 @@ namespace Services;
 
 public interface IDocumentProcessingService
 {
-    Task ProcessAsync(DocumentUploadedEvent message, CancellationToken cancellationToken = default);
+    Task ProcessAsync(DocumentUploadedEvent message, RetryContext retryContext, CancellationToken cancellationToken = default);
 }
 
 public sealed class DocumentProcessingService : IDocumentProcessingService
@@ -31,6 +33,7 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
     private readonly ITextExtractorResolver _textExtractorResolver;
     private readonly IChunkingService _chunkingService;
     private readonly IKafkaProducer _kafkaProducer;
+    private readonly IRetryQueue _retryQueue;
     private readonly ChunkingOptions _chunkingOptions;
     private readonly long _maxFileSizeBytes;
     private readonly ILogger<DocumentProcessingService> _logger;
@@ -43,6 +46,7 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
         ITextExtractorResolver textExtractorResolver,
         IChunkingService chunkingService,
         IKafkaProducer kafkaProducer,
+        IRetryQueue retryQueue,
         IOptions<ChunkingOptions> chunkingOptions,
         IOptions<FileProcessingOptions> fileProcessingOptions,
         ILogger<DocumentProcessingService> logger)
@@ -54,25 +58,29 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
         _textExtractorResolver = textExtractorResolver;
         _chunkingService = chunkingService;
         _kafkaProducer = kafkaProducer;
+        _retryQueue = retryQueue;
         _chunkingOptions = chunkingOptions.Value;
         _maxFileSizeBytes = fileProcessingOptions.Value.MaxFileSizeBytes;
         _logger = logger;
     }
 
-    public async Task ProcessAsync(DocumentUploadedEvent message, CancellationToken cancellationToken = default)
+    public async Task ProcessAsync(DocumentUploadedEvent message, RetryContext retryContext, CancellationToken cancellationToken = default)
     {
-        var metadata = new DocumentMetadata
+        if (retryContext.RetryCount == 0)
         {
-            DocumentId = message.DocumentId,
-            FileName = message.FileName,
-            ContentType = message.ContentType,
-            AuthorizedDepartments = message.AuthorizedDepartments,
-            UploadedAtUtc = message.UploadedAtUtc,
-            IngestedAtUtc = DateTime.UtcNow,
-            Status = DocumentProcessingStatus.Pending
-        };
+            var metadata = new DocumentMetadata
+            {
+                DocumentId = message.DocumentId,
+                FileName = message.FileName,
+                ContentType = message.ContentType,
+                AuthorizedDepartments = message.AuthorizedDepartments,
+                UploadedAtUtc = message.UploadedAtUtc,
+                IngestedAtUtc = DateTime.UtcNow,
+                Status = DocumentProcessingStatus.Pending
+            };
 
-        await _metadataRepository.AddAsync(metadata, cancellationToken);
+            await _metadataRepository.AddAsync(metadata, cancellationToken);
+        }
 
         try
         {
@@ -141,8 +149,22 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await _metadataRepository.UpdateStatusAsync(message.DocumentId, DocumentProcessingStatus.Failed, ex.Message, cancellationToken);
-            _logger.LogError(ex, "Failed to process document '{DocumentId}'.", message.DocumentId);
+            var willRetry = await _retryQueue.ScheduleAsync(
+                Constants.KafkaTopics.DocumentIngestion,
+                message.DocumentId,
+                JsonSerializer.Serialize(message),
+                retryContext.RetryCount,
+                retryContext.FirstFailedAtUtc,
+                ex.Message,
+                cancellationToken);
+
+            await _metadataRepository.UpdateStatusAsync(
+                message.DocumentId,
+                willRetry ? DocumentProcessingStatus.PendingRetry : DocumentProcessingStatus.Failed,
+                ex.Message,
+                cancellationToken);
+
+            _logger.LogError(ex, "Failed to process document '{DocumentId}' (attempt {RetryCount}).", message.DocumentId, retryContext.RetryCount + 1);
         }
     }
 }

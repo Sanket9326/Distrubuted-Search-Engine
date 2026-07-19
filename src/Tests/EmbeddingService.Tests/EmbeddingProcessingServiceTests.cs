@@ -1,5 +1,6 @@
 using Contracts;
 using Contracts.Events;
+using Contracts.Reliability;
 using Entities;
 using Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,9 +25,9 @@ public sealed class EmbeddingProcessingServiceTests
         var vectorStore = new FakeVectorStore();
 
         var sut = new EmbeddingProcessingService(
-            chunkRepository, statusRepository, embeddingGenerator, vectorStore, NullLogger<EmbeddingProcessingService>.Instance);
+            chunkRepository, statusRepository, embeddingGenerator, vectorStore, new FakeRetryQueue(), NullLogger<EmbeddingProcessingService>.Instance);
 
-        await sut.ProcessAsync(new ChunksCreatedEvent { DocumentId = "doc-1", ChunkCount = 2, CreatedAtUtc = DateTime.UtcNow });
+        await sut.ProcessAsync(new ChunksCreatedEvent { DocumentId = "doc-1", ChunkCount = 2, CreatedAtUtc = DateTime.UtcNow }, RetryContext.None);
 
         Assert.Equal(2, vectorStore.UpsertedChunks.Count);
         Assert.Equal(new[] { DocumentProcessingStatus.Embedding, DocumentProcessingStatus.Embedded }, statusRepository.RecordedStatuses);
@@ -44,9 +45,9 @@ public sealed class EmbeddingProcessingServiceTests
         var vectorStore = new FakeVectorStore();
 
         var sut = new EmbeddingProcessingService(
-            chunkRepository, statusRepository, embeddingGenerator, vectorStore, NullLogger<EmbeddingProcessingService>.Instance);
+            chunkRepository, statusRepository, embeddingGenerator, vectorStore, new FakeRetryQueue(), NullLogger<EmbeddingProcessingService>.Instance);
 
-        await sut.ProcessAsync(new ChunksCreatedEvent { DocumentId = "doc-4", ChunkCount = 1, CreatedAtUtc = DateTime.UtcNow });
+        await sut.ProcessAsync(new ChunksCreatedEvent { DocumentId = "doc-4", ChunkCount = 1, CreatedAtUtc = DateTime.UtcNow }, RetryContext.None);
 
         var upserted = Assert.Single(vectorStore.UpsertedChunks);
         Assert.Equal(Department.Finance | Department.Engineering, upserted.AuthorizedDepartments);
@@ -61,9 +62,9 @@ public sealed class EmbeddingProcessingServiceTests
         var vectorStore = new FakeVectorStore();
 
         var sut = new EmbeddingProcessingService(
-            chunkRepository, statusRepository, embeddingGenerator, vectorStore, NullLogger<EmbeddingProcessingService>.Instance);
+            chunkRepository, statusRepository, embeddingGenerator, vectorStore, new FakeRetryQueue(), NullLogger<EmbeddingProcessingService>.Instance);
 
-        await sut.ProcessAsync(new ChunksCreatedEvent { DocumentId = "doc-2", ChunkCount = 0, CreatedAtUtc = DateTime.UtcNow });
+        await sut.ProcessAsync(new ChunksCreatedEvent { DocumentId = "doc-2", ChunkCount = 0, CreatedAtUtc = DateTime.UtcNow }, RetryContext.None);
 
         Assert.Empty(vectorStore.UpsertedChunks);
         Assert.Equal(new[] { DocumentProcessingStatus.Embedding, DocumentProcessingStatus.Embedded }, statusRepository.RecordedStatuses);
@@ -81,13 +82,13 @@ public sealed class EmbeddingProcessingServiceTests
         var vectorStore = new FakeVectorStore();
 
         var sut = new EmbeddingProcessingService(
-            chunkRepository, statusRepository, embeddingGenerator, vectorStore, NullLogger<EmbeddingProcessingService>.Instance);
+            chunkRepository, statusRepository, embeddingGenerator, vectorStore, new FakeRetryQueue(), NullLogger<EmbeddingProcessingService>.Instance);
 
-        await sut.ProcessAsync(new ChunksCreatedEvent { DocumentId = "doc-3", ChunkCount = 1, CreatedAtUtc = DateTime.UtcNow });
+        await sut.ProcessAsync(new ChunksCreatedEvent { DocumentId = "doc-3", ChunkCount = 1, CreatedAtUtc = DateTime.UtcNow }, RetryContext.None);
 
         Assert.Empty(vectorStore.UpsertedChunks);
         Assert.Equal(
-            new[] { DocumentProcessingStatus.Embedding, DocumentProcessingStatus.EmbeddingFailed },
+            new[] { DocumentProcessingStatus.Embedding, DocumentProcessingStatus.PendingRetry },
             statusRepository.RecordedStatuses);
     }
 
@@ -140,5 +141,29 @@ public sealed class EmbeddingProcessingServiceTests
             UpsertedChunks.AddRange(chunks);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class FakeRetryQueue : IRetryQueue
+    {
+        public bool WillRetry { get; set; } = true;
+
+        public Task<bool> ScheduleAsync(
+            string topic,
+            string key,
+            string payloadJson,
+            int currentRetryCount,
+            DateTime? firstFailedAtUtc,
+            string? lastError,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(WillRetry);
+
+        public Task<IReadOnlyList<RetryEnvelope>> PopDueAsync(int batchSize, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<RetryEnvelope>>(Array.Empty<RetryEnvelope>());
+
+        public Task<long?> PeekNextDueAtUnixMsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<long?>(null);
+
+        public Task<long> GetQueueDepthAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(0L);
     }
 }

@@ -328,16 +328,148 @@
       "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
+      "id": 25,
+      "type": "row",
+      "title": "🔁 Reliability (Retry / DLQ)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 }
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Reliability Service",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "health_check_status{job=\"reliability-service\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Unhealthy" }, "0.5": { "text": "Degraded" }, "1": { "text": "Healthy" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0.5, "color": "orange" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "Retry Queue Depth",
+      "description": "Envelopes currently waiting in the Redis retry sorted set (retry:queue)",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "retry_queue_depth",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "value": null, "color": "green" }, { "value": 20, "color": "orange" }, { "value": 100, "color": "red" }] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 28,
+      "type": "stat",
+      "title": "Retries Scheduled / min",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(retry_scheduled_total[5m])) * 60",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "value": null, "color": "blue" }] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "Dead-Lettered / min",
+      "description": "Messages that exceeded max retry count and were routed to a DLQ topic",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(retry_exhausted_total[5m])) * 60",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "value": null, "color": "green" }, { "value": 0.017, "color": "red" }] } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Retry Activity by Topic",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(retry_scheduled_total[5m])) by (topic) * 60",
+          "legendFormat": "scheduled: {{topic}}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(retry_republished_total[5m])) by (topic) * 60",
+          "legendFormat": "republished: {{topic}}",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(retry_exhausted_total[5m])) by (topic) * 60",
+          "legendFormat": "dead-lettered: {{topic}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Retry Queue Depth Over Time",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "retry_queue_depth",
+          "legendFormat": "pending retries",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
       "id": 20,
       "type": "row",
       "title": "🐳 Container Resources",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 }
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 }
     },
     {
       "id": 21,
       "type": "timeseries",
       "title": "CPU Usage per Container",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -353,7 +485,7 @@
       "id": 22,
       "type": "timeseries",
       "title": "Memory Usage per Container",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 39 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -369,7 +501,7 @@
       "id": 23,
       "type": "timeseries",
       "title": "Network Receive per Container",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 47 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 60 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -385,7 +517,7 @@
       "id": 24,
       "type": "timeseries",
       "title": "Network Transmit per Container",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 47 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 60 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {

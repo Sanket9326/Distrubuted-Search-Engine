@@ -9,5 +9,6 @@ public enum DocumentProcessingStatus
     Unsupported,
     Embedding,
     Embedded,
-    EmbeddingFailed
+    EmbeddingFailed,
+    PendingRetry
 }

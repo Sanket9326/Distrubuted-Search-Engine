@@ -1,15 +1,18 @@
+using System.Text.Json;
 using Contracts;
 using Contracts.Events;
+using Contracts.Reliability;
 using Infrastructure;
 using Prometheus;
 using Repositories;
 using Services.VectorStorage;
+using SharedKernel;
 
 namespace Services;
 
 public interface IEmbeddingProcessingService
 {
-    Task ProcessAsync(ChunksCreatedEvent message, CancellationToken cancellationToken = default);
+    Task ProcessAsync(ChunksCreatedEvent message, RetryContext retryContext, CancellationToken cancellationToken = default);
 }
 
 public sealed class EmbeddingProcessingService : IEmbeddingProcessingService
@@ -21,6 +24,7 @@ public sealed class EmbeddingProcessingService : IEmbeddingProcessingService
     private readonly IDocumentMetadataStatusRepository _metadataStatusRepository;
     private readonly IEmbeddingGenerator _embeddingGenerator;
     private readonly IVectorStore _vectorStore;
+    private readonly IRetryQueue _retryQueue;
     private readonly ILogger<EmbeddingProcessingService> _logger;
 
     public EmbeddingProcessingService(
@@ -28,16 +32,18 @@ public sealed class EmbeddingProcessingService : IEmbeddingProcessingService
         IDocumentMetadataStatusRepository metadataStatusRepository,
         IEmbeddingGenerator embeddingGenerator,
         IVectorStore vectorStore,
+        IRetryQueue retryQueue,
         ILogger<EmbeddingProcessingService> logger)
     {
         _chunkRepository = chunkRepository;
         _metadataStatusRepository = metadataStatusRepository;
         _embeddingGenerator = embeddingGenerator;
         _vectorStore = vectorStore;
+        _retryQueue = retryQueue;
         _logger = logger;
     }
 
-    public async Task ProcessAsync(ChunksCreatedEvent message, CancellationToken cancellationToken = default)
+    public async Task ProcessAsync(ChunksCreatedEvent message, RetryContext retryContext, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -73,8 +79,22 @@ public sealed class EmbeddingProcessingService : IEmbeddingProcessingService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await _metadataStatusRepository.UpdateStatusAsync(message.DocumentId, DocumentProcessingStatus.EmbeddingFailed, ex.Message, cancellationToken);
-            _logger.LogError(ex, "Failed to generate embeddings for document '{DocumentId}'.", message.DocumentId);
+            var willRetry = await _retryQueue.ScheduleAsync(
+                Constants.KafkaTopics.ChunksCreated,
+                message.DocumentId,
+                JsonSerializer.Serialize(message),
+                retryContext.RetryCount,
+                retryContext.FirstFailedAtUtc,
+                ex.Message,
+                cancellationToken);
+
+            await _metadataStatusRepository.UpdateStatusAsync(
+                message.DocumentId,
+                willRetry ? DocumentProcessingStatus.PendingRetry : DocumentProcessingStatus.EmbeddingFailed,
+                ex.Message,
+                cancellationToken);
+
+            _logger.LogError(ex, "Failed to generate embeddings for document '{DocumentId}' (attempt {RetryCount}).", message.DocumentId, retryContext.RetryCount + 1);
         }
     }
 }

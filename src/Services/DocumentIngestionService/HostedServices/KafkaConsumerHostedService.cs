@@ -1,7 +1,9 @@
+using System.Text;
 using System.Text.Json;
 using Confluent.Kafka;
 using Consumers;
 using Contracts.Events;
+using Contracts.Reliability;
 using Microsoft.Extensions.Options;
 using SharedKernel;
 
@@ -67,9 +69,11 @@ public sealed class KafkaConsumerHostedService : BackgroundService
                     continue;
                 }
 
+                var retryContext = ExtractRetryContext(result.Message.Headers);
+
                 using var scope = _scopeFactory.CreateScope();
                 var consumer = scope.ServiceProvider.GetRequiredService<IDocumentUploadedConsumer>();
-                await consumer.ConsumeAsync(message, stoppingToken);
+                await consumer.ConsumeAsync(message, retryContext, stoppingToken);
 
                 _consumer.Commit(result);
             }
@@ -82,6 +86,34 @@ public sealed class KafkaConsumerHostedService : BackgroundService
                 _logger.LogError(ex, "Error consuming message from Kafka topic '{Topic}'", Constants.KafkaTopics.DocumentIngestion);
             }
         }
+    }
+
+    /// <summary>
+    /// Reads retry metadata off the inbound message's headers. A message not carrying these
+    /// headers (the common case) is its first attempt.
+    /// </summary>
+    private static RetryContext ExtractRetryContext(Headers? headers)
+    {
+        if (headers is null)
+        {
+            return RetryContext.None;
+        }
+
+        var retryCount = 0;
+        if (headers.TryGetLastBytes(Constants.KafkaHeaders.RetryCount, out var retryCountBytes)
+            && int.TryParse(Encoding.UTF8.GetString(retryCountBytes), out var parsedRetryCount))
+        {
+            retryCount = parsedRetryCount;
+        }
+
+        DateTime? firstFailedAtUtc = null;
+        if (headers.TryGetLastBytes(Constants.KafkaHeaders.FirstFailedAtUtc, out var firstFailedBytes)
+            && DateTime.TryParse(Encoding.UTF8.GetString(firstFailedBytes), out var parsedFirstFailedAtUtc))
+        {
+            firstFailedAtUtc = DateTime.SpecifyKind(parsedFirstFailedAtUtc, DateTimeKind.Utc);
+        }
+
+        return new RetryContext(retryCount, firstFailedAtUtc);
     }
 
     public override void Dispose()

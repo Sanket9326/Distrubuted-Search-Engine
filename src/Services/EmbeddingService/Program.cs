@@ -1,4 +1,5 @@
 using Common.Extensions;
+using Common.Reliability;
 using Confluent.Kafka;
 using Consumers;
 using HostedServices;
@@ -23,11 +24,13 @@ builder.Services.AddSerilog((services, cfg) => cfg
     .WriteTo.Console(new CompactJsonFormatter()));
 
 builder.AddSharedObservability();
+builder.AddSharedRedis();
 
 var postgresHealthSettings = builder.Configuration.GetSection(PostgresSettings.SectionName).Get<PostgresSettings>() ?? new PostgresSettings();
 var kafkaHealthSettings = builder.Configuration.GetSection(KafkaConsumerSettings.SectionName).Get<KafkaConsumerSettings>() ?? new KafkaConsumerSettings();
 var qdrantHealthOptions = builder.Configuration.GetSection(QdrantOptions.SectionName).Get<QdrantOptions>() ?? new QdrantOptions();
 var ollamaHealthOptions = builder.Configuration.GetSection(OllamaOptions.SectionName).Get<OllamaOptions>() ?? new OllamaOptions();
+var redisHealthSettings = builder.Configuration.GetSection(RedisSettings.SectionName).Get<RedisSettings>() ?? new RedisSettings();
 
 builder.Services.AddHealthChecks()
     .AddNpgSql(postgresHealthSettings.ConnectionString, name: "postgres")
@@ -36,7 +39,8 @@ builder.Services.AddHealthChecks()
         config.BootstrapServers = kafkaHealthSettings.BootstrapServers;
     }, name: "kafka")
     .AddUrlGroup(new Uri($"http://{qdrantHealthOptions.Endpoint}:{qdrantHealthOptions.RestPort}/healthz"), name: "qdrant")
-    .AddUrlGroup(new Uri(ollamaHealthOptions.Endpoint), name: "ollama");
+    .AddUrlGroup(new Uri(ollamaHealthOptions.Endpoint), name: "ollama")
+    .AddRedis(redisHealthSettings.ConnectionString, name: "redis");
 
 builder.Services.Configure<KafkaConsumerSettings>(builder.Configuration.GetSection(KafkaConsumerSettings.SectionName));
 builder.Services.AddScoped<IChunksCreatedConsumer, ChunksCreatedConsumer>();
