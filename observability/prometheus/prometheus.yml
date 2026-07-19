@@ -19,6 +19,10 @@ scrape_configs:
     static_configs:
       - targets: ["search-service:8080"]
 
+  - job_name: reliability-service
+    static_configs:
+      - targets: ["reliability-service:8080"]
+
   - job_name: cadvisor
     static_configs:
       - targets: ["cadvisor:8080"]

@@ -67,6 +67,16 @@ services:
     volumes:
       - qdrant-data:/qdrant/storage
 
+  redis:
+    image: redis:7-alpine
+    container_name: document-search-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+
   ollama:
     image: ollama/ollama:latest
     container_name: document-search-ollama
@@ -123,12 +133,14 @@ services:
       Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
       Minio__BucketName: ${MINIO_BUCKET_NAME:-documents}
       Minio__UseSSL: "false"
+      Redis__ConnectionString: redis:6379
     ports:
       - "${DOCUMENT_INGESTION_SERVICE_PORT:-8083}:8080"
     depends_on:
       - postgres
       - minio
       - kafka
+      - redis
 
   embedding-service:
     build:
@@ -146,6 +158,7 @@ services:
       Qdrant__CollectionName: ${QDRANT_COLLECTION_NAME:-document_chunks}
       Ollama__Endpoint: http://ollama:11434
       Ollama__Model: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      Redis__ConnectionString: redis:6379
     ports:
       - "${EMBEDDING_SERVICE_PORT:-8084}:8080"
     depends_on:
@@ -153,6 +166,7 @@ services:
       - kafka
       - qdrant
       - ollama
+      - redis
 
   search-service:
     build:
@@ -177,6 +191,22 @@ services:
       - qdrant
       - ollama
       - reranker
+
+  reliability-service:
+    build:
+      context: .
+      dockerfile: src/Services/ReliabilityService/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Production}
+      Kafka__BootstrapServers: kafka:29092
+      Redis__ConnectionString: redis:6379
+    ports:
+      - "${RELIABILITY_SERVICE_PORT:-8086}:8080"
+    depends_on:
+      - kafka
+      - redis
 
   web-ui:
     build:
@@ -223,6 +253,7 @@ services:
       - document-ingestion-service
       - embedding-service
       - search-service
+      - reliability-service
 
   grafana:
     image: grafana/grafana:latest
@@ -245,5 +276,6 @@ volumes:
   qdrant-data:
   ollama-data:
   reranker-data:
+  redis-data:
   prometheus-data:
   grafana-data:

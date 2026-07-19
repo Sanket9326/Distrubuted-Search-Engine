@@ -1,4 +1,5 @@
 using Contracts.Events;
+using Contracts.Reliability;
 using Services;
 
 namespace Consumers;
@@ -14,15 +15,16 @@ public sealed class DocumentUploadedConsumer : IDocumentUploadedConsumer
         _logger = logger;
     }
 
-    public async Task ConsumeAsync(DocumentUploadedEvent message, CancellationToken cancellationToken = default)
+    public async Task ConsumeAsync(DocumentUploadedEvent message, RetryContext retryContext, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
-            "Processing DocumentUploadedEvent for document '{DocumentId}' ({FileName}, {ContentType}) uploaded at {UploadedAtUtc}",
+            "Processing DocumentUploadedEvent for document '{DocumentId}' ({FileName}, {ContentType}) uploaded at {UploadedAtUtc}, retry attempt {RetryCount}",
             message.DocumentId,
             message.FileName,
             message.ContentType,
-            message.UploadedAtUtc);
+            message.UploadedAtUtc,
+            retryContext.RetryCount);
 
-        await _processingService.ProcessAsync(message, cancellationToken);
+        await _processingService.ProcessAsync(message, retryContext, cancellationToken);
     }
 }

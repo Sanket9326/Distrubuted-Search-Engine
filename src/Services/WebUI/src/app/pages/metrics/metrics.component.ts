@@ -30,7 +30,8 @@ const SERVICES: Array<{ key: string; label: string }> = [
   { key: 'upload-service', label: 'Upload Service' },
   { key: 'document-ingestion-service', label: 'Document Ingestion' },
   { key: 'embedding-service', label: 'Embedding Service' },
-  { key: 'search-service', label: 'Search Service' }
+  { key: 'search-service', label: 'Search Service' },
+  { key: 'reliability-service', label: 'Reliability Service' }
 ];
 
 @Component({
@@ -50,6 +51,7 @@ export class MetricsComponent implements OnInit, OnDestroy {
   readonly latencyOption = signal<EChartsCoreOption | null>(null);
   readonly cpuOption = signal<EChartsCoreOption | null>(null);
   readonly memoryOption = signal<EChartsCoreOption | null>(null);
+  readonly retryQueueDepthOption = signal<EChartsCoreOption | null>(null);
   readonly lastUpdated = signal<Date | null>(null);
 
   ngOnInit(): void {
@@ -68,6 +70,7 @@ export class MetricsComponent implements OnInit, OnDestroy {
     this.refreshCounters();
     this.refreshRequestCharts();
     this.refreshContainerCharts();
+    this.refreshReliabilityChart();
     this.lastUpdated.set(new Date());
   }
 
@@ -94,7 +97,10 @@ export class MetricsComponent implements OnInit, OnDestroy {
       ['Documents Uploaded', 'rate(documents_uploaded_total[5m]) * 60', '/min'],
       ['Documents Ingested', 'rate(documents_ingested_total[5m]) * 60', '/min'],
       ['Chunks Embedded', 'rate(chunks_embedded_total[5m]) * 60', '/min'],
-      ['RAG Answers Generated', 'rate(rag_answers_generated_total[5m]) * 60', '/min']
+      ['RAG Answers Generated', 'rate(rag_answers_generated_total[5m]) * 60', '/min'],
+      ['Retry Queue Depth', 'retry_queue_depth', ''],
+      ['Retries Scheduled', 'sum(rate(retry_scheduled_total[5m])) * 60', '/min'],
+      ['Dead-Lettered', 'sum(rate(retry_exhausted_total[5m])) * 60', '/min']
     ];
 
     forkJoin(queries.map(([, expr]) => this.prometheus.query(expr))).subscribe(results => {
@@ -150,6 +156,13 @@ export class MetricsComponent implements OnInit, OnDestroy {
         const series = results.map(r => ({ name: r.labels['name'] || 'unknown', data: [r] }));
         this.memoryOption.set(this.buildLineChartOption(series, 'bytes'));
       });
+  }
+
+  private refreshReliabilityChart(): void {
+    this.prometheus.queryRange('retry_queue_depth', RANGE_SECONDS, STEP_SECONDS).subscribe(results => {
+      const series = [{ name: 'pending retries', data: results }];
+      this.retryQueueDepthOption.set(this.buildLineChartOption(series, 'envelopes'));
+    });
   }
 
   private buildLineChartOption(

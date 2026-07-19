@@ -1,4 +1,5 @@
 using Contracts.Events;
+using Contracts.Reliability;
 using Services;
 
 namespace Consumers;
@@ -14,14 +15,15 @@ public sealed class ChunksCreatedConsumer : IChunksCreatedConsumer
         _logger = logger;
     }
 
-    public async Task ConsumeAsync(ChunksCreatedEvent message, CancellationToken cancellationToken = default)
+    public async Task ConsumeAsync(ChunksCreatedEvent message, RetryContext retryContext, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
-            "Processing ChunksCreatedEvent for document '{DocumentId}' ({ChunkCount} chunks) created at {CreatedAtUtc}",
+            "Processing ChunksCreatedEvent for document '{DocumentId}' ({ChunkCount} chunks) created at {CreatedAtUtc}, retry attempt {RetryCount}",
             message.DocumentId,
             message.ChunkCount,
-            message.CreatedAtUtc);
+            message.CreatedAtUtc,
+            retryContext.RetryCount);
 
-        await _processingService.ProcessAsync(message, cancellationToken);
+        await _processingService.ProcessAsync(message, retryContext, cancellationToken);
     }
 }

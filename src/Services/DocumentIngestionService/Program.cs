@@ -1,5 +1,6 @@
 using Common.Extensions;
 using Common.FileValidation;
+using Common.Reliability;
 using Common.Utilities;
 using Confluent.Kafka;
 using Consumers;
@@ -27,11 +28,13 @@ builder.Services.AddSerilog((services, cfg) => cfg
     .WriteTo.Console(new CompactJsonFormatter()));
 
 builder.AddSharedObservability();
+builder.AddSharedRedis();
 
 var postgresHealthSettings = builder.Configuration.GetSection(PostgresSettings.SectionName).Get<PostgresSettings>() ?? new PostgresSettings();
 var kafkaHealthSettings = builder.Configuration.GetSection(KafkaConsumerSettings.SectionName).Get<KafkaConsumerSettings>() ?? new KafkaConsumerSettings();
 var minioHealthSettings = builder.Configuration.GetSection(MinioSettings.SectionName).Get<MinioSettings>() ?? new MinioSettings();
 var minioScheme = minioHealthSettings.UseSSL ? "https" : "http";
+var redisHealthSettings = builder.Configuration.GetSection(RedisSettings.SectionName).Get<RedisSettings>() ?? new RedisSettings();
 
 builder.Services.AddHealthChecks()
     .AddNpgSql(postgresHealthSettings.ConnectionString, name: "postgres")
@@ -39,7 +42,8 @@ builder.Services.AddHealthChecks()
     {
         config.BootstrapServers = kafkaHealthSettings.BootstrapServers;
     }, name: "kafka")
-    .AddUrlGroup(new Uri($"{minioScheme}://{minioHealthSettings.Endpoint}/minio/health/live"), name: "minio");
+    .AddUrlGroup(new Uri($"{minioScheme}://{minioHealthSettings.Endpoint}/minio/health/live"), name: "minio")
+    .AddRedis(redisHealthSettings.ConnectionString, name: "redis");
 
 builder.Services.Configure<KafkaConsumerSettings>(builder.Configuration.GetSection(KafkaConsumerSettings.SectionName));
 builder.Services.AddScoped<IDocumentUploadedConsumer, DocumentUploadedConsumer>();
