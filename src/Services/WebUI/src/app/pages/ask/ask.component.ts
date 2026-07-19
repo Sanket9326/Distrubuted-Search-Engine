@@ -1,6 +1,7 @@
 import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { marked } from 'marked';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -14,9 +15,20 @@ import { AnswerSource, SearchApiService } from './search-api.service';
 interface ChatTurn {
   question: string;
   answer?: string;
+  answerHtml?: string;
   sources?: AnswerSource[];
   isLoading: boolean;
 }
+
+const LOADING_PHRASES = [
+  'Thinking…',
+  'Reading through your documents…',
+  'Searching the knowledge base…',
+  'Musing…',
+  'Connecting the dots…',
+  'Weighing up the sources…',
+  'Putting the answer together…'
+];
 
 @Component({
   selector: 'app-ask',
@@ -44,6 +56,9 @@ export class AskComponent {
   selectedDepartment = signal<string>('');
   currentQuestion = signal('');
   turns = signal<ChatTurn[]>([]);
+  loadingPhrase = signal(LOADING_PHRASES[0]);
+
+  private loadingPhraseTimer?: ReturnType<typeof setInterval>;
 
   canAsk(): boolean {
     return this.selectedDepartment().length > 0 && this.currentQuestion().trim().length > 0;
@@ -60,15 +75,25 @@ export class AskComponent {
     this.turns.update(turns => [...turns, turn]);
     this.currentQuestion.set('');
     this.scrollToBottom();
+    this.startLoadingPhraseRotation();
 
     this.searchApi.askQuestion(question, department).subscribe({
       next: response => {
-        this.updateLastTurn({ answer: response.answer, sources: response.sources, isLoading: false });
+        this.stopLoadingPhraseRotation();
+        this.updateLastTurn({
+          answer: response.answer,
+          answerHtml: marked.parse(response.answer, { async: false }) as string,
+          sources: response.sources,
+          isLoading: false
+        });
         this.scrollToBottom();
       },
       error: () => {
+        this.stopLoadingPhraseRotation();
+        const message = 'Something went wrong reaching the search service. Please try again.';
         this.updateLastTurn({
-          answer: 'Something went wrong reaching the search service. Please try again.',
+          answer: message,
+          answerHtml: marked.parse(message, { async: false }) as string,
           sources: [],
           isLoading: false
         });
@@ -85,6 +110,20 @@ export class AskComponent {
       copy[copy.length - 1] = { ...last, ...patch };
       return copy;
     });
+  }
+
+  private startLoadingPhraseRotation(): void {
+    let index = 0;
+    this.loadingPhrase.set(LOADING_PHRASES[0]);
+    this.loadingPhraseTimer = setInterval(() => {
+      index = (index + 1) % LOADING_PHRASES.length;
+      this.loadingPhrase.set(LOADING_PHRASES[index]);
+    }, 1800);
+  }
+
+  private stopLoadingPhraseRotation(): void {
+    clearInterval(this.loadingPhraseTimer);
+    this.loadingPhraseTimer = undefined;
   }
 
   private scrollToBottom(): void {
