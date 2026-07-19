@@ -30,7 +30,8 @@ public sealed class KafkaConsumerHostedService : BackgroundService
             BootstrapServers = _settings.BootstrapServers,
             GroupId = _settings.GroupId,
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = false
+            EnableAutoCommit = false,
+            MaxPollIntervalMs = _settings.MaxPollIntervalMs
         }).Build();
     }
 
@@ -79,6 +80,13 @@ public sealed class KafkaConsumerHostedService : BackgroundService
             catch (ConsumeException ex)
             {
                 _logger.LogError(ex, "Error consuming message from Kafka topic '{Topic}'", Constants.KafkaTopics.ChunksCreated);
+            }
+            catch (KafkaException ex)
+            {
+                // e.g. "Unknown member" committing after a group rebalance evicted this consumer
+                // (max.poll.interval.ms exceeded). Log and keep looping rather than letting this
+                // crash the whole host - the un-committed message will simply be redelivered.
+                _logger.LogError(ex, "Kafka broker error while processing/committing on topic '{Topic}'; message will be redelivered.", Constants.KafkaTopics.ChunksCreated);
             }
         }
     }
