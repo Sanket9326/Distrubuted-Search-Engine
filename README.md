@@ -16,6 +16,7 @@
 ![Ollama](https://img.shields.io/badge/Ollama-Embeddings-000000?style=for-the-badge&logo=ollama&logoColor=white)
 ![TEI](https://img.shields.io/badge/HF%20TEI-Cross--Encoder%20Reranker-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-RAG%20Answer%20Generation-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-Retry%20Queue-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 ![Prometheus](https://img.shields.io/badge/Prometheus-Metrics%20%26%20Health-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)
 ![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?style=for-the-badge&logo=grafana&logoColor=white)
 ![Angular](https://img.shields.io/badge/Angular-Web%20UI-DD0031?style=for-the-badge&logo=angular&logoColor=white)
@@ -42,7 +43,7 @@ The platform starts with document uploads and progressively evolves into a compl
 
 The objective is to build every major search engine component from scratch instead of relying on existing search platforms.
 
-**Where things stand today:** the full pipeline is end to end — a document can be uploaded, stored, chunked, embedded, landed as a filterable vector in Qdrant, and **queried back through a semantic Search API** with cross-encoder re-ranking. On top of that, a **RAG answer endpoint** now takes those re-ranked chunks, builds a token-budgeted prompt, and calls Google Gemini to return a grounded, cited natural-language answer. An **Angular Web UI** now sits in front of both (upload + a chat-style ask page + a live metrics dashboard), so the whole thing is usable from a browser, not just `curl`. Keyword/BM25 search and hybrid retrieval are the next phase.
+**Where things stand today:** the full pipeline is end to end — a document can be uploaded, stored, chunked, embedded, landed as a filterable vector in Qdrant, and **queried back through a semantic Search API** with cross-encoder re-ranking. On top of that, a **RAG answer endpoint** now takes those re-ranked chunks, builds a token-budgeted prompt, and calls Google Gemini to return a grounded, cited natural-language answer, rendered as **Markdown** in the UI. An **Angular Web UI** sits in front of both (upload + a chat-style ask page + a live metrics dashboard), so the whole thing is usable from a browser, not just `curl`. Failures in the ingestion/embedding pipeline are no longer terminal — a Redis-backed **retry queue** with exponential backoff and a dedicated **Reliability Service** now automatically re-attempts failed messages and routes exhausted ones to a Kafka dead-letter topic. Keyword/BM25 search and hybrid retrieval are the next phase.
 
 ---
 
@@ -72,6 +73,10 @@ The objective is to build every major search engine component from scratch inste
 | 📊 Grafana dashboards (auto-provisioned) | ✅ |
 | 📝 Structured JSON logging (Serilog) | ✅ |
 | 🖥 Angular Web UI (upload, RAG chat, live metrics) | ✅ |
+| 📑 Markdown-rendered RAG answers in the UI | ✅ |
+| 🔁 Redis-backed retry queue with exponential backoff | ✅ |
+| ☠️ Dead-letter queue (DLQ) for exhausted retries | ✅ |
+| 🛡 Dedicated Reliability Service (retry/DLQ worker) | ✅ |
 | ⚡ BM25 / keyword search | ⏳ |
 | 🔄 Hybrid retrieval (keyword + semantic) | ⏳ |
 
@@ -110,6 +115,12 @@ Reranker[(TEI Reranker)]
 
 Gemini[(Google Gemini)]
 
+Redis[(Redis - Retry Queue)]
+
+Reliability[Reliability Service]
+
+DLQ[/Kafka: DLQ Topics/]
+
 Client --> WebUI
 
 WebUI -->|Upload file + departments| API
@@ -144,6 +155,18 @@ Search -->|Cross-encoder rerank| Reranker
 
 Search -->|Prompt-build + generate answer| Gemini
 
+Worker -.->|Schedule retry on failure| Redis
+
+Embed -.->|Schedule retry on failure| Redis
+
+Redis -.->|Pop due retries| Reliability
+
+Reliability -->|Republish| Kafka1
+
+Reliability -->|Republish| Kafka2
+
+Reliability -->|Exhausted retries| DLQ
+
 style API fill:#00c9a7,color:#000
 style Search fill:#00c9a7,color:#000
 style WebUI fill:#DD0031,color:#fff
@@ -158,7 +181,12 @@ style Ollama fill:#000000,color:#fff
 style Reranker fill:#FFD21E,color:#000
 style Gemini fill:#4285F4,color:#fff
 style Prometheus fill:#E6522C,color:#fff
+style Redis fill:#DC382D,color:#fff
+style Reliability fill:#203A43,color:#fff
+style DLQ fill:#231F20,color:#fff
 ```
+
+> 🔁 **Reliability at a glance:** when the Document Ingestion or Embedding Service fails to process a message (Ollama timeout, DB blip, etc.), it schedules a retry in Redis instead of dropping it. The **Reliability Service** wakes up when a retry becomes due, republishes it to its original Kafka topic with retry-count headers, and — once a message exceeds the configured max retry count — routes it to that topic's dead-letter topic instead. See [Reliability & Retries](#-reliability--retries) below.
 
 ---
 
@@ -207,6 +235,12 @@ style Prometheus fill:#E6522C,color:#fff
                         ▼
           Status: Embedded (or EmbeddingFailed)
 
+   (On failure anywhere above: schedule retry in Redis
+    with backoff → Status: PendingRetry. Reliability
+    Service pops due retries → republishes to the
+    original Kafka topic, or — once max retries are
+    exceeded — routes to that topic's DLQ.)
+
 
               Query + Departments
                         │
@@ -245,6 +279,7 @@ style Prometheus fill:#E6522C,color:#fff
 | **Document Ingestion Service** | Background worker + minimal HTTP (`/health`, `/metrics`) | `8083` | Downloads the file, extracts text, chunks it, persists chunks/metadata to Postgres, publishes `ChunksCreatedEvent` |
 | **Embedding Service** | Background worker + minimal HTTP (`/health`, `/metrics`) | `8084` | Reads chunks for a document, generates embeddings via Ollama, upserts vectors + payload into Qdrant, tracks status |
 | **Search Service** | ASP.NET Core Web API | `8081` | Embeds the query (Ollama), runs a department-filtered vector search against Qdrant, re-ranks candidates via a TEI cross-encoder, returns top-K results (`POST /api/search`); optionally builds a token-budgeted prompt from those chunks and generates a grounded, cited answer via Google Gemini (`POST /api/search/answer`) |
+| **Reliability Service** | Background worker + minimal HTTP (`/health`, `/metrics`) | `8086` | Ensures DLQ topics exist on startup, drains the shared Redis retry queue as entries become due, republishes them to their original Kafka topic (with retry-tracking headers), or routes exhausted messages to that topic's dead-letter topic |
 | **Web UI** | Angular SPA (nginx-served) | `4200` | Browser client: upload page, RAG chat ("Ask") page, live metrics dashboard |
 
 ### External inference dependencies
@@ -261,8 +296,39 @@ style Prometheus fill:#E6522C,color:#fff
 
 | Topic | Producer | Consumer | Payload |
 |---|---|---|---|
-| `DocumentIngestion` | Upload Service | Document Ingestion Service | `DocumentUploadedEvent` — `DocumentId`, `FileName`, `ContentType`, `AuthorizedDepartments`, `UploadedAtUtc` |
-| `ChunksCreated` | Document Ingestion Service | Embedding Service | `ChunksCreatedEvent` — `DocumentId`, `ChunkCount`, `CreatedAtUtc` |
+| `DocumentIngestion` | Upload Service, Reliability Service (republish) | Document Ingestion Service | `DocumentUploadedEvent` — `DocumentId`, `FileName`, `ContentType`, `AuthorizedDepartments`, `UploadedAtUtc` |
+| `ChunksCreated` | Document Ingestion Service, Reliability Service (republish) | Embedding Service | `ChunksCreatedEvent` — `DocumentId`, `ChunkCount`, `CreatedAtUtc` |
+| `DocumentIngestion.DLQ` | Reliability Service | *(none yet — inspect via consumer tooling)* | Same payload as `DocumentIngestion`, plus `x-retry-count`/`x-first-failed-at-utc`/`x-last-failed-at-utc` headers |
+| `ChunksCreated.DLQ` | Reliability Service | *(none yet — inspect via consumer tooling)* | Same payload as `ChunksCreated`, plus the same retry headers |
+
+Retry-tracking headers (`x-retry-count`, `x-first-failed-at-utc`, `x-last-failed-at-utc`) are only present on messages the Reliability Service has republished at least once; a message's first attempt carries none of them.
+
+---
+
+# 🛡 Reliability & Retries
+
+Document Ingestion and Embedding each depend on things that can transiently fail — Postgres blips, MinIO hiccups, a slow/unavailable Ollama. Instead of dropping a message on failure, both services catch the exception and hand it to a shared **`IRetryQueue`** (`src/BuildingBlocks/Infrastructure/IRetryQueue.cs`), backed by **Redis** (`RedisRetryQueue`, `src/BuildingBlocks/Common/Reliability/`).
+
+**How scheduling works:** a failed message is JSON-serialized into a `RetryEnvelope` (original topic, key, payload, retry count, first/last failure time, last error) and added to a single Redis sorted set (`retry:queue`), scored by the Unix-ms timestamp it becomes due. The due delay follows a configurable backoff schedule — by default `2, 5, 15, 30, 60` minutes for retry attempts 1–5, clamped to the last entry beyond that. The document/chunk's status flips to `PendingRetry` in Postgres while it waits.
+
+**How draining works:** the standalone **Reliability Service** (`src/Services/ReliabilityService/`) runs a single background loop (`RetryQueuePollingHostedService`) that:
+1. Peeks the next due timestamp instead of polling the whole queue, sleeping until then (capped at `MaxWaitSeconds`, so a newly-scheduled earlier item is never missed for long).
+2. Atomically pops up to `PopBatchSize` due envelopes via a Lua script (`ZRANGEBYSCORE` + `ZREM` in one round-trip) — safe even with multiple replicas, since Redis executes it single-threaded.
+3. For each envelope: if it's still within `MaxRetryCount`, republishes it to its original Kafka topic with `x-retry-count`/`x-first-failed-at-utc`/`x-last-failed-at-utc` headers so the consumer knows this isn't a first attempt; once exhausted, routes it to that topic's dead-letter topic instead (`DocumentIngestion.DLQ` / `ChunksCreated.DLQ`, auto-created on startup by `DlqTopicInitializer` if missing).
+
+A message that fails to publish during routing (e.g. broker unreachable) is re-scheduled rather than lost — the one gap being a worker crash in the narrow window between the atomic pop and a successful publish.
+
+Retry-aware metrics (see [Observability](#-observability) below): `retry_scheduled_total{topic}`, `retry_republished_total{topic}`, `retry_exhausted_total{topic}`, and a `retry_queue_depth` gauge — all visible on the Web UI's **Metrics** page and the Grafana dashboard.
+
+Configuration (`Retry` section, `RetrySettings`):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MaxRetryCount` | `5` | Attempts beyond this are routed to the DLQ instead of retried again |
+| `BackoffMinutes` | `[2, 5, 15, 30, 60]` | Delay for the Nth retry, indexed by `retryCount - 1`, clamped to the last entry |
+| `IdlePollSeconds` | `5` | How often the worker re-checks Redis when the queue is empty |
+| `MaxWaitSeconds` | `30` | Upper bound on how long the worker sleeps waiting for the next due item |
+| `PopBatchSize` | `50` | Max envelopes popped per due batch |
 
 ---
 
@@ -272,8 +338,8 @@ Every .NET service exposes the same three endpoints (via a shared `Common.Extens
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /metrics` | Prometheus exposition format — generic HTTP request rate/latency (`prometheus-net`) plus one domain-specific counter per service (`documents_uploaded_total`, `documents_ingested_total`, `chunks_embedded_total`, `rag_answers_generated_total`) |
-| `GET /health` | Real dependency checks (Postgres, Kafka, Qdrant, MinIO, Ollama, TEI reranker; Gemini is a config-presence check only — see note below) as readable JSON, e.g. `{ "status": "Healthy", "checks": [...] }` |
+| `GET /metrics` | Prometheus exposition format — generic HTTP request rate/latency (`prometheus-net`) plus one domain-specific counter per service (`documents_uploaded_total`, `documents_ingested_total`, `chunks_embedded_total`, `rag_answers_generated_total`) and, for the retry path, `retry_scheduled_total{topic}` / `retry_republished_total{topic}` / `retry_exhausted_total{topic}` / `retry_queue_depth` |
+| `GET /health` | Real dependency checks (Postgres, Kafka, Qdrant, MinIO, Ollama, TEI reranker, Redis; Gemini is a config-presence check only — see note below) as readable JSON, e.g. `{ "status": "Healthy", "checks": [...] }` |
 | `GET /health/live` | Liveness only — always `200` if the process is up, no dependency calls |
 
 Health results are also republished as a `health_check_status` Prometheus gauge (1 = healthy, 0.5 = degraded, 0 = unhealthy) every 15s, so health shows up in Grafana from the same datasource as everything else — no separate JSON-API datasource needed.
@@ -284,7 +350,7 @@ Health results are also republished as a `health_check_status` Prometheus gauge 
 
 | Component | Role | Port |
 |---|---|---|
-| **Prometheus** | Scrapes `/metrics` from all 4 .NET services + cAdvisor every 15s | `9090` |
+| **Prometheus** | Scrapes `/metrics` from all 5 .NET services + cAdvisor every 15s | `9090` |
 | **Grafana** | Auto-provisioned Prometheus datasource + a "System Overview" dashboard (per-service health, request rate/latency, domain counters, per-container CPU/memory/network) | `3000` (default login `admin` / `GRAFANA_ADMIN_PASSWORD`) |
 | **cAdvisor** | Reports CPU/memory/network for every container in the stack (not just the .NET services) | `8085` |
 
@@ -301,10 +367,10 @@ An Angular SPA (`src/Services/WebUI`) at `http://localhost:4200`, containerized 
 | Page | Route | Calls | Description |
 |---|---|---|---|
 | **Upload** | `/upload` | `POST http://localhost:8080/api/FileHandler/upload` | Drag-and-drop file zone + multi-select department picker |
-| **Ask** | `/ask` | `POST http://localhost:8081/api/search/answer` | Chat-style RAG Q&A; pick "your department" (single-select stand-in until real auth exists), see the cited answer + sources |
-| **Metrics** | `/metrics` | Prometheus HTTP API directly (`http://localhost:9090`) | Fully custom dashboard (not a Grafana embed) — service health tiles, domain counters, request rate/latency, per-container resources — polling every 15s |
+| **Ask** | `/ask` | `POST http://localhost:8081/api/search/answer` | Chat-style RAG Q&A; pick "your department" (single-select stand-in until real auth exists); the answer is rendered as **Markdown** (via `marked`) rather than raw text, and while waiting for a response a rotating set of loading phrases ("Thinking…", "Reading through your documents…", ...) cycles every 1.8s instead of a static spinner label |
+| **Metrics** | `/metrics` | Prometheus HTTP API directly (`http://localhost:9090`) | Fully custom dashboard (not a Grafana embed) — service health tiles (now including the Reliability Service), domain counters, request rate/latency, a retry queue depth chart, per-container resources — polling every 15s |
 
-**Stack:** Angular 19 (standalone components, signals), Angular Material + Tailwind CSS for styling, `ngx-echarts`/Apache ECharts for the metrics charts.
+**Stack:** Angular 19 (standalone components, signals), Angular Material + Tailwind CSS for styling, `ngx-echarts`/Apache ECharts for the metrics charts, `marked` for Markdown rendering.
 
 The browser always talks to the host-mapped ports (`localhost:8080`/`:8081`/`:9090`), never the internal docker-network hostnames — configured once in `src/environments/environment.ts`. This is also the first browser client in the repo, so CORS is enabled specifically for the UI's origin on `UploadService`, `SearchService` (`Cors:WebUiOrigin` config, defaults to `http://localhost:4200`), and Prometheus (`--web.cors.origin` flag in `docker-compose.yml`).
 
@@ -359,10 +425,14 @@ One row per chunk. Unique on `(document_id, chunk_index)`, cascades on document 
 ```text
 0 Pending → 1 Processing → 2 Chunked → 3 Failed
                           → 4 Unsupported
+                          → 8 PendingRetry → (retried) → 2 Chunked / 3 Failed
 
 2 Chunked → 5 Embedding → 6 Embedded
                          → 7 EmbeddingFailed
+                         → 8 PendingRetry → (retried) → 6 Embedded / 7 EmbeddingFailed
 ```
+
+`8 PendingRetry` is set whenever a failure is successfully scheduled onto the Redis retry queue ([Reliability & Retries](#-reliability--retries)); it only settles into a terminal `Failed`/`EmbeddingFailed` once the message has exhausted `MaxRetryCount` attempts.
 
 ---
 
@@ -372,13 +442,15 @@ One row per chunk. Unique on `(document_id, chunk_index)`, cascades on document 
 src
 │
 ├── BuildingBlocks
-│   ├── SharedKernel        # Kafka topic constants, cross-cutting constants
-│   ├── Contracts           # Shared events (DocumentUploadedEvent, ChunksCreatedEvent)
-│   │                       # and enums (DocumentProcessingStatus, Department)
-│   ├── Infrastructure      # IKafkaProducer, IFileStorage, IMinioStorage, IEmbeddingGenerator
+│   ├── SharedKernel        # Kafka topic/DLQ constants, retry header names, cross-cutting constants
+│   ├── Contracts           # Shared events (DocumentUploadedEvent, ChunksCreatedEvent),
+│   │                       # enums (DocumentProcessingStatus, Department), and
+│   │                       # Reliability/ (RetryContext, RetryEnvelope)
+│   ├── Infrastructure      # IKafkaProducer, IFileStorage, IMinioStorage, IEmbeddingGenerator, IRetryQueue
 │   └── Common              # File validation, GUID generation, department parsing, text sanitization,
 │                           # shared observability wiring (Extensions/) — Prometheus health-check
-│                           # publisher, /health JSON writer, used identically by all 4 services
+│                           # publisher, /health JSON writer, used identically by all 5 services,
+│                           # plus Reliability/ (RedisRetryQueue, RetrySettings, RedisSettings)
 │
 ├── observability
 │   ├── prometheus          # prometheus.yml scrape config
@@ -390,7 +462,9 @@ src
 │   ├── EmbeddingService            # Worker — embed, upsert to Qdrant
 │   ├── SearchService                # Web API — embed query, vector search, rerank,
 │   │                                # prompt build + Gemini answer generation
-│   └── WebUI                        # Angular SPA — upload, RAG chat, live metrics dashboard
+│   ├── ReliabilityService            # Worker — drains the Redis retry queue, republishes
+│   │                                 # due retries, routes exhausted ones to Kafka DLQ topics
+│   └── WebUI                        # Angular SPA — upload, RAG chat (Markdown answers), live metrics
 │
 ├── Tests
 │   ├── UploadService.Tests
@@ -416,6 +490,7 @@ src
 | Vector Store | Qdrant (Cosine similarity) |
 | Re-ranking | Hugging Face Text Embeddings Inference (`BAAI/bge-reranker-v2-m3`) |
 | RAG Answer Generation | Google Gemini (`gemini-flash-lite-latest`, free tier) |
+| Reliability / Retry Queue | Redis 7 (sorted set, Lua-scripted atomic pop) |
 | Metrics | Prometheus + `prometheus-net.AspNetCore` |
 | Dashboards | Grafana (auto-provisioned) |
 | Container Metrics | cAdvisor |
@@ -423,6 +498,7 @@ src
 | Web UI | Angular 19 (standalone, signals) |
 | UI Styling | Angular Material + Tailwind CSS |
 | UI Charts | ngx-echarts (Apache ECharts) |
+| Markdown Rendering | `marked` |
 | Containerization | Docker / Docker Compose |
 | Architecture | Microservices, event-driven |
 | Future Search | BM25, hybrid retrieval |
@@ -518,7 +594,7 @@ Set `GEMINI_API_KEY` in `.env` to a free key from [Google AI Studio](https://ais
 docker compose up -d --build
 ```
 
-This brings up Postgres, pgAdmin, MinIO, Kafka, Qdrant, Ollama, the TEI reranker, all four .NET services (Upload, Document Ingestion, Embedding, Search), the Angular Web UI, and the observability stack (Prometheus, Grafana, cAdvisor).
+This brings up Postgres, pgAdmin, MinIO, Kafka, Redis, Qdrant, Ollama, the TEI reranker, all five .NET services (Upload, Document Ingestion, Embedding, Search, Reliability), the Angular Web UI, and the observability stack (Prometheus, Grafana, cAdvisor).
 
 On first run:
 - **Ollama** needs the `nomic-embed-text` model pulled — `docker exec -it document-search-ollama ollama pull nomic-embed-text` if it isn't already cached.
@@ -583,7 +659,7 @@ Response is `{ "answer": "...", "sources": [ { "chunkId", "documentId", "fileNam
 
 **4. Watch it all live**
 
-Open `http://localhost:4200/metrics` for the built-in Web UI dashboard, or `http://localhost:3000` for Grafana (login `admin` / whatever you set `GRAFANA_ADMIN_PASSWORD` to, dashboard auto-provisioned). Both show live health status per service, request rate/latency, the domain counters above (documents uploaded/ingested, chunks embedded, RAG answers generated), and per-container CPU/memory/network from cAdvisor. Prometheus itself is at `http://localhost:9090` if you want to run raw PromQL queries or check `/targets` for scrape health.
+Open `http://localhost:4200/metrics` for the built-in Web UI dashboard, or `http://localhost:3000` for Grafana (login `admin` / whatever you set `GRAFANA_ADMIN_PASSWORD` to, dashboard auto-provisioned). Both show live health status per service (including Reliability), request rate/latency, the domain counters above (documents uploaded/ingested, chunks embedded, RAG answers generated), the retry queue depth, and per-container CPU/memory/network from cAdvisor. Prometheus itself is at `http://localhost:9090` if you want to run raw PromQL queries or check `/targets` for scrape health.
 
 ---
 
