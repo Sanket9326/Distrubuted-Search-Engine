@@ -168,6 +168,25 @@ services:
       - ollama
       - redis
 
+  keyword-index-service:
+    build:
+      context: .
+      dockerfile: src/Services/KeywordIndexService/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Production}
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__GroupId: keyword-index-service
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Redis__ConnectionString: redis:6379
+    ports:
+      - "${KEYWORD_INDEX_SERVICE_PORT:-8087}:8080"
+    depends_on:
+      - postgres
+      - kafka
+      - redis
+
   search-service:
     build:
       context: .
@@ -252,6 +271,7 @@ services:
       - upload-service
       - document-ingestion-service
       - embedding-service
+      - keyword-index-service
       - search-service
       - reliability-service
 

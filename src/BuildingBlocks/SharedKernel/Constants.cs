@@ -6,13 +6,16 @@ public static class Constants
     {
         public const string DocumentIngestion = "DocumentIngestion";
         public const string ChunksCreated = "ChunksCreated";
+        public const string KeywordIndexing = "KeywordIndexing";
         public const string DocumentIngestionDlq = "DocumentIngestion.DLQ";
         public const string ChunksCreatedDlq = "ChunksCreated.DLQ";
+        public const string KeywordIndexingDlq = "KeywordIndexing.DLQ";
 
         public static string ToDlqTopic(string originalTopic) => originalTopic switch
         {
             DocumentIngestion => DocumentIngestionDlq,
             ChunksCreated => ChunksCreatedDlq,
+            KeywordIndexing => KeywordIndexingDlq,
             _ => $"{originalTopic}.DLQ"
         };
     }

@@ -10,7 +10,8 @@ public sealed class DlqTopicInitializer : IHostedService
     private static readonly string[] DlqTopics =
     [
         Constants.KafkaTopics.DocumentIngestionDlq,
-        Constants.KafkaTopics.ChunksCreatedDlq
+        Constants.KafkaTopics.ChunksCreatedDlq,
+        Constants.KafkaTopics.KeywordIndexingDlq
     ];
 
     private readonly KafkaSettings _settings;

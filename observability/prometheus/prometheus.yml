@@ -15,6 +15,10 @@ scrape_configs:
     static_configs:
       - targets: ["embedding-service:8080"]
 
+  - job_name: keyword-index-service
+    static_configs:
+      - targets: ["keyword-index-service:8080"]
+
   - job_name: search-service
     static_configs:
       - targets: ["search-service:8080"]
