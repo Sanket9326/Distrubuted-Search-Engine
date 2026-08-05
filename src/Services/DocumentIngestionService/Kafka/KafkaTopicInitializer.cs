@@ -16,6 +16,12 @@ public sealed class KafkaTopicInitializer : IHostedService
         _logger = logger;
     }
 
+    private static readonly string[] TopicsToCreate =
+    [
+        Constants.KafkaTopics.ChunksCreated,
+        Constants.KafkaTopics.KeywordIndexing
+    ];
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var adminClient = new AdminClientBuilder(new AdminClientConfig
@@ -24,32 +30,31 @@ public sealed class KafkaTopicInitializer : IHostedService
         }).Build();
 
         var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(10));
-        var topicExists = metadata.Topics.Exists(t =>
-            t.Topic == Constants.KafkaTopics.ChunksCreated && t.Error.Code == ErrorCode.NoError);
 
-        if (topicExists)
+        var topicsToCreate = TopicsToCreate
+            .Where(topic => !metadata.Topics.Exists(t => t.Topic == topic && t.Error.Code == ErrorCode.NoError))
+            .Select(topic => new TopicSpecification
+            {
+                Name = topic,
+                NumPartitions = _settings.TopicPartitions,
+                ReplicationFactor = _settings.TopicReplicationFactor
+            })
+            .ToArray();
+
+        if (topicsToCreate.Length == 0)
         {
-            _logger.LogInformation("Kafka topic '{Topic}' already exists", Constants.KafkaTopics.ChunksCreated);
+            _logger.LogInformation("All Kafka topics already exist.");
             return;
         }
 
         try
         {
-            await adminClient.CreateTopicsAsync(new[]
-            {
-                new TopicSpecification
-                {
-                    Name = Constants.KafkaTopics.ChunksCreated,
-                    NumPartitions = _settings.TopicPartitions,
-                    ReplicationFactor = _settings.TopicReplicationFactor
-                }
-            });
-
-            _logger.LogInformation("Created Kafka topic '{Topic}'", Constants.KafkaTopics.ChunksCreated);
+            await adminClient.CreateTopicsAsync(topicsToCreate);
+            _logger.LogInformation("Created Kafka topics: {Topics}", string.Join(", ", topicsToCreate.Select(t => t.Name)));
         }
-        catch (CreateTopicsException ex) when (ex.Results.Any(r => r.Error.Code == ErrorCode.TopicAlreadyExists))
+        catch (CreateTopicsException ex) when (ex.Results.All(r => r.Error.Code is ErrorCode.NoError or ErrorCode.TopicAlreadyExists))
         {
-            _logger.LogInformation("Kafka topic '{Topic}' already exists", Constants.KafkaTopics.ChunksCreated);
+            _logger.LogInformation("Kafka topics already exist (created concurrently by another instance).");
         }
     }
 

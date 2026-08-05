@@ -113,15 +113,18 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
             {
                 await _chunkRepository.AddRangeAsync(chunks, cancellationToken);
 
-                await _kafkaProducer.PublishAsync(
-                    Constants.KafkaTopics.ChunksCreated,
-                    new ChunksCreatedEvent
-                    {
-                        DocumentId = message.DocumentId,
-                        ChunkCount = chunks.Count,
-                        CreatedAtUtc = DateTime.UtcNow
-                    },
-                    cancellationToken);
+                var chunksCreatedEvent = new ChunksCreatedEvent
+                {
+                    DocumentId = message.DocumentId,
+                    ChunkCount = chunks.Count,
+                    CreatedAtUtc = DateTime.UtcNow
+                };
+
+                // Published to two independent downstream pipelines - embedding (vector search)
+                // and keyword indexing (inverted index) - each with its own consumer group/topic
+                // so either can be retried/DLQ'd without affecting the other.
+                await _kafkaProducer.PublishAsync(Constants.KafkaTopics.ChunksCreated, chunksCreatedEvent, cancellationToken);
+                await _kafkaProducer.PublishAsync(Constants.KafkaTopics.KeywordIndexing, chunksCreatedEvent, cancellationToken);
             }
 
             var noExtractableText = string.IsNullOrWhiteSpace(text);
