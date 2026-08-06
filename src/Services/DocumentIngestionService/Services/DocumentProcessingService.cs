@@ -116,6 +116,8 @@ public sealed class DocumentProcessingService : IDocumentProcessingService
                 var chunksCreatedEvent = new ChunksCreatedEvent
                 {
                     DocumentId = message.DocumentId,
+                    FileName = message.FileName,
+                    AuthorizedDepartments = message.AuthorizedDepartments,
                     ChunkCount = chunks.Count,
                     CreatedAtUtc = DateTime.UtcNow
                 };

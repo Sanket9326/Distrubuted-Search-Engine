@@ -1,12 +1,17 @@
 using Common.Extensions;
 using Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
+using Persistence;
 using Prometheus;
 using Serilog;
 using Serilog.Formatting.Compact;
 using Services;
 using Services.Embedding;
+using Services.Indexing;
+using Services.KeywordSearch;
 using Services.Llm;
 using Services.Prompting;
 using Services.ReRanking;
@@ -34,17 +39,31 @@ var qdrantOptions = builder.Configuration.GetSection(QdrantOptions.SectionName).
 var ollamaOptions = builder.Configuration.GetSection(OllamaOptions.SectionName).Get<OllamaOptions>() ?? new OllamaOptions();
 var teiOptions = builder.Configuration.GetSection(TeiOptions.SectionName).Get<TeiOptions>() ?? new TeiOptions();
 var geminiHealthOptions = builder.Configuration.GetSection(GeminiOptions.SectionName).Get<GeminiOptions>() ?? new GeminiOptions();
+var postgresOptions = builder.Configuration.GetSection(PostgresOptions.SectionName).Get<PostgresOptions>() ?? new PostgresOptions();
 
 builder.Services.AddHealthChecks()
     .AddUrlGroup(new Uri($"http://{qdrantOptions.Endpoint}:{qdrantOptions.RestPort}/healthz"), name: "qdrant")
     .AddUrlGroup(new Uri(ollamaOptions.Endpoint), name: "ollama")
     .AddUrlGroup(new Uri($"{teiOptions.Endpoint}/health"), name: "reranker")
+    .AddNpgSql(postgresOptions.ConnectionString, name: "postgres")
     .AddCheck("gemini", () => string.IsNullOrWhiteSpace(geminiHealthOptions.ApiKey)
         ? HealthCheckResult.Degraded("Gemini API key not configured")
         : HealthCheckResult.Healthy());
 
 builder.Services.Configure<QdrantOptions>(builder.Configuration.GetSection(QdrantOptions.SectionName));
 builder.Services.AddSingleton<IVectorSearchStore, QdrantVectorSearchStore>();
+
+builder.Services.Configure<PostgresOptions>(builder.Configuration.GetSection(PostgresOptions.SectionName));
+builder.Services.AddDbContext<KeywordIndexReadDbContext>((serviceProvider, options) =>
+{
+    var settings = serviceProvider.GetRequiredService<IOptions<PostgresOptions>>().Value;
+    options.UseNpgsql(settings.ConnectionString);
+});
+builder.Services.AddSingleton<ITokenizer, RegexTokenizer>();
+builder.Services.AddSingleton<IStopWordFilter, EnglishStopWordFilter>();
+builder.Services.AddSingleton<IStemmer, PorterStemmerAdapter>();
+builder.Services.AddSingleton<IKeywordAnalyzer, KeywordAnalyzer>();
+builder.Services.AddScoped<IKeywordSearchStore, Bm25KeywordSearchStore>();
 
 builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection(OllamaOptions.SectionName));
 builder.Services.AddHttpClient<IEmbeddingGenerator, OllamaEmbeddingGenerator>();

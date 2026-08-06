@@ -3,6 +3,7 @@ using Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Services;
+using Services.KeywordSearch;
 using Services.ReRanking;
 using Services.VectorSearch;
 
@@ -15,24 +16,27 @@ public sealed class SearchProcessingServiceTests
     {
         var embeddingGenerator = new FakeEmbeddingGenerator(_ => throw new InvalidOperationException("Should not be called"));
         var vectorSearchStore = new FakeVectorSearchStore(Array.Empty<ScoredChunk>());
+        var keywordSearchStore = new FakeKeywordSearchStore(Array.Empty<ScoredChunk>());
         var reRanker = new FakeReRanker();
 
-        var sut = CreateSut(embeddingGenerator, vectorSearchStore, reRanker);
+        var sut = CreateSut(embeddingGenerator, vectorSearchStore, keywordSearchStore, reRanker);
 
         var response = await sut.SearchAsync(new SearchRequest { Query = "hello", Departments = null });
 
         Assert.Empty(response.Results);
         Assert.False(vectorSearchStore.WasCalled);
+        Assert.False(keywordSearchStore.WasCalled);
     }
 
     [Fact]
-    public async Task SearchAsync_ClampsTopK_AndRequestsRetrievalMultiplierCandidates()
+    public async Task SearchAsync_ClampsTopK_AndRequestsRetrievalMultiplierCandidates_FromBothStores()
     {
         var embeddingGenerator = new FakeEmbeddingGenerator(_ => new[] { new float[] { 0.1f, 0.2f } });
         var vectorSearchStore = new FakeVectorSearchStore(Array.Empty<ScoredChunk>());
+        var keywordSearchStore = new FakeKeywordSearchStore(Array.Empty<ScoredChunk>());
         var reRanker = new FakeReRanker();
 
-        var sut = CreateSut(embeddingGenerator, vectorSearchStore, reRanker, new SearchOptions
+        var sut = CreateSut(embeddingGenerator, vectorSearchStore, keywordSearchStore, reRanker, new SearchOptions
         {
             DefaultTopK = 5,
             MaxTopK = 10,
@@ -44,6 +48,7 @@ public sealed class SearchProcessingServiceTests
 
         Assert.Equal(10 * 3, vectorSearchStore.LastLimit);
         Assert.Equal(0.5f, vectorSearchStore.LastMinimumScore);
+        Assert.Equal(10 * 3, keywordSearchStore.LastLimit);
     }
 
     [Fact]
@@ -55,9 +60,10 @@ public sealed class SearchProcessingServiceTests
 
         var embeddingGenerator = new FakeEmbeddingGenerator(_ => new[] { new float[] { 0.1f } });
         var vectorSearchStore = new FakeVectorSearchStore(new[] { candidate });
+        var keywordSearchStore = new FakeKeywordSearchStore(Array.Empty<ScoredChunk>());
         var reRanker = new FakeReRanker();
 
-        var sut = CreateSut(embeddingGenerator, vectorSearchStore, reRanker);
+        var sut = CreateSut(embeddingGenerator, vectorSearchStore, keywordSearchStore, reRanker);
 
         var response = await sut.SearchAsync(new SearchRequest { Query = "hello", Departments = new[] { "Finance" } });
 
@@ -73,14 +79,51 @@ public sealed class SearchProcessingServiceTests
         Assert.True(reRanker.WasCalled);
     }
 
+    [Fact]
+    public async Task SearchAsync_MergesVectorAndKeywordCandidates_DedupingByChunkId()
+    {
+        var sharedChunkId = Guid.NewGuid();
+        var vectorOnlyId = Guid.NewGuid();
+        var keywordOnlyId = Guid.NewGuid();
+        var createdAt = DateTime.UtcNow;
+
+        var vectorCandidates = new[]
+        {
+            new ScoredChunk(sharedChunkId, "doc-shared", "shared.pdf", 0, "shared content", new[] { "Finance" }, createdAt, 0.8f),
+            new ScoredChunk(vectorOnlyId, "doc-vector", "vector.pdf", 0, "vector content", new[] { "Finance" }, createdAt, 0.7f)
+        };
+        var keywordCandidates = new[]
+        {
+            new ScoredChunk(sharedChunkId, "doc-shared", "shared.pdf", 0, "shared content", new[] { "Finance" }, createdAt, 5.0f),
+            new ScoredChunk(keywordOnlyId, "doc-keyword", "keyword.pdf", 0, "keyword content", new[] { "Finance" }, createdAt, 3.0f)
+        };
+
+        var embeddingGenerator = new FakeEmbeddingGenerator(_ => new[] { new float[] { 0.1f } });
+        var vectorSearchStore = new FakeVectorSearchStore(vectorCandidates);
+        var keywordSearchStore = new FakeKeywordSearchStore(keywordCandidates);
+        var reRanker = new FakeReRanker();
+
+        var sut = CreateSut(embeddingGenerator, vectorSearchStore, keywordSearchStore, reRanker, new SearchOptions { DefaultTopK = 10 });
+
+        await sut.SearchAsync(new SearchRequest { Query = "hello", Departments = new[] { "Finance" } });
+
+        Assert.NotNull(reRanker.LastCandidates);
+        Assert.Equal(3, reRanker.LastCandidates!.Count);
+        Assert.Contains(reRanker.LastCandidates!, c => c.ChunkId == sharedChunkId);
+        Assert.Contains(reRanker.LastCandidates!, c => c.ChunkId == vectorOnlyId);
+        Assert.Contains(reRanker.LastCandidates!, c => c.ChunkId == keywordOnlyId);
+    }
+
     private static SearchProcessingService CreateSut(
         FakeEmbeddingGenerator embeddingGenerator,
         FakeVectorSearchStore vectorSearchStore,
+        FakeKeywordSearchStore keywordSearchStore,
         FakeReRanker reRanker,
         SearchOptions? options = null)
         => new(
             embeddingGenerator,
             vectorSearchStore,
+            keywordSearchStore,
             reRanker,
             Microsoft.Extensions.Options.Options.Create(options ?? new SearchOptions()),
             NullLogger<SearchProcessingService>.Instance);
@@ -117,14 +160,36 @@ public sealed class SearchProcessingServiceTests
         }
     }
 
+    private sealed class FakeKeywordSearchStore : IKeywordSearchStore
+    {
+        private readonly IReadOnlyList<ScoredChunk> _results;
+
+        public FakeKeywordSearchStore(IReadOnlyList<ScoredChunk> results) => _results = results;
+
+        public bool WasCalled { get; private set; }
+
+        public int LastLimit { get; private set; }
+
+        public Task<IReadOnlyList<ScoredChunk>> SearchAsync(
+            string query, Contracts.Department departments, int limit, CancellationToken cancellationToken = default)
+        {
+            WasCalled = true;
+            LastLimit = limit;
+            return Task.FromResult(_results);
+        }
+    }
+
     private sealed class FakeReRanker : IReRanker
     {
         public bool WasCalled { get; private set; }
+
+        public IReadOnlyList<ScoredChunk>? LastCandidates { get; private set; }
 
         public Task<IReadOnlyList<ScoredChunk>> RerankAsync(
             string query, IReadOnlyList<ScoredChunk> candidates, int topK, CancellationToken cancellationToken = default)
         {
             WasCalled = true;
+            LastCandidates = candidates;
             return Task.FromResult<IReadOnlyList<ScoredChunk>>(candidates.Take(topK).ToList());
         }
     }

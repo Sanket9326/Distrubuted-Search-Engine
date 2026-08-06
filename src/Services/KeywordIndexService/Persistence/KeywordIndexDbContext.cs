@@ -20,6 +20,12 @@ public sealed class KeywordIndexDbContext : DbContext
 
     public DbSet<DocumentKeywordIndexStatus> KeywordIndexStatuses => Set<DocumentKeywordIndexStatus>();
 
+    public DbSet<IndexDocumentMetadata> IndexDocumentMetadata => Set<IndexDocumentMetadata>();
+
+    public DbSet<IndexChunkStats> IndexChunkStats => Set<IndexChunkStats>();
+
+    public DbSet<IndexStats> IndexStats => Set<IndexStats>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<IndexTerm>(entity =>
@@ -55,6 +61,35 @@ public sealed class KeywordIndexDbContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasConversion<int>();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2048);
             entity.Property(e => e.UpdatedAtUtc).IsRequired();
+        });
+
+        modelBuilder.Entity<IndexDocumentMetadata>(entity =>
+        {
+            entity.ToTable("index_document_metadata");
+            entity.HasKey(e => e.DocumentId);
+            entity.Property(e => e.DocumentId).HasMaxLength(600);
+            entity.Property(e => e.AuthorizedDepartments).IsRequired();
+            entity.Property(e => e.FileName).IsRequired().HasMaxLength(600);
+            entity.Property(e => e.UpdatedAtUtc).IsRequired();
+        });
+
+        modelBuilder.Entity<IndexChunkStats>(entity =>
+        {
+            entity.ToTable("index_chunk_stats");
+            entity.HasKey(e => e.ChunkId);
+            entity.Property(e => e.DocumentId).IsRequired().HasMaxLength(600);
+            entity.Property(e => e.TokenCount).IsRequired();
+            entity.HasIndex(e => e.DocumentId);
+        });
+
+        modelBuilder.Entity<IndexStats>(entity =>
+        {
+            entity.ToTable("index_stats");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.TotalChunks).IsRequired();
+            entity.Property(e => e.TotalTokenLength).IsRequired();
+            entity.HasData(new IndexStats { Id = Entities.IndexStats.SingletonId, TotalChunks = 0, TotalTokenLength = 0 });
         });
     }
 }
