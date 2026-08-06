@@ -61,7 +61,12 @@ public sealed class KeywordIndexProcessingService : IKeywordIndexProcessingServi
                 chunk => chunk.Id,
                 chunk => (IReadOnlyList<ChunkTermStats>)_analyzer.Analyze(chunk.Content));
 
-            await _indexRepository.ReindexDocumentAsync(message.DocumentId, chunkTermStats, cancellationToken);
+            await _indexRepository.ReindexDocumentAsync(
+                message.DocumentId,
+                message.FileName,
+                (int)message.AuthorizedDepartments,
+                chunkTermStats,
+                cancellationToken);
 
             await _statusRepository.UpdateStatusAsync(message.DocumentId, KeywordIndexStatus.Indexed, null, cancellationToken);
 

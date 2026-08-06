@@ -204,9 +204,11 @@ services:
       Gemini__ApiKey: ${GEMINI_API_KEY}
       Gemini__Model: ${GEMINI_MODEL:-gemini-flash-lite-latest}
       Cors__WebUiOrigin: http://localhost:${WEB_UI_PORT:-4200}
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
     ports:
       - "${SEARCH_SERVICE_PORT:-8081}:8080"
     depends_on:
+      - postgres
       - qdrant
       - ollama
       - reranker

@@ -16,12 +16,15 @@ public sealed class IndexRepository : IIndexRepository
 
     public async Task ReindexDocumentAsync(
         string documentId,
+        string fileName,
+        int authorizedDepartments,
         IReadOnlyDictionary<Guid, IReadOnlyList<ChunkTermStats>> chunkTermStats,
         CancellationToken cancellationToken = default)
     {
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         await RemoveExistingPostingsAsync(documentId, cancellationToken);
+        await RemoveExistingChunkStatsAsync(documentId, cancellationToken);
 
         var newTermChunkCounts = chunkTermStats
             .SelectMany(kvp => kvp.Value.Select(stat => (ChunkId: kvp.Key, stat.Term)))
@@ -30,9 +33,9 @@ public sealed class IndexRepository : IIndexRepository
 
         var termIds = await GetOrCreateTermIdsAsync(newTermChunkCounts.Keys, cancellationToken);
 
-        foreach (var (chunkId, stats) in chunkTermStats)
+        foreach (var (chunkId, chunkStats) in chunkTermStats)
         {
-            foreach (var stat in stats)
+            foreach (var stat in chunkStats)
             {
                 _dbContext.IndexPostings.Add(new IndexPosting
                 {
@@ -51,6 +54,35 @@ public sealed class IndexRepository : IIndexRepository
             var termEntity = await _dbContext.IndexTerms.FirstAsync(t => t.TermId == termId, cancellationToken);
             termEntity.DocumentFrequency += chunkCount;
         }
+
+        long addedTokenLength = 0;
+        foreach (var (chunkId, chunkStats) in chunkTermStats)
+        {
+            var tokenCount = chunkStats.Sum(s => s.TermFrequency);
+            addedTokenLength += tokenCount;
+            _dbContext.IndexChunkStats.Add(new IndexChunkStats
+            {
+                ChunkId = chunkId,
+                DocumentId = documentId,
+                TokenCount = tokenCount
+            });
+        }
+
+        var indexStats = await GetOrCreateStatsAsync(cancellationToken);
+        indexStats.TotalChunks += chunkTermStats.Count;
+        indexStats.TotalTokenLength += addedTokenLength;
+
+        var metadata = await _dbContext.IndexDocumentMetadata
+            .FirstOrDefaultAsync(m => m.DocumentId == documentId, cancellationToken);
+        if (metadata is null)
+        {
+            metadata = new IndexDocumentMetadata { DocumentId = documentId };
+            _dbContext.IndexDocumentMetadata.Add(metadata);
+        }
+
+        metadata.FileName = fileName;
+        metadata.AuthorizedDepartments = authorizedDepartments;
+        metadata.UpdatedAtUtc = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -82,6 +114,40 @@ public sealed class IndexRepository : IIndexRepository
 
         _dbContext.IndexPostings.RemoveRange(existingPostings);
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task RemoveExistingChunkStatsAsync(string documentId, CancellationToken cancellationToken)
+    {
+        var existingChunkStats = await _dbContext.IndexChunkStats
+            .Where(c => c.DocumentId == documentId)
+            .ToListAsync(cancellationToken);
+
+        if (existingChunkStats.Count == 0)
+        {
+            return;
+        }
+
+        var stats = await GetOrCreateStatsAsync(cancellationToken);
+        stats.TotalChunks = Math.Max(0, stats.TotalChunks - existingChunkStats.Count);
+        stats.TotalTokenLength = Math.Max(0, stats.TotalTokenLength - existingChunkStats.Sum(c => (long)c.TokenCount));
+
+        _dbContext.IndexChunkStats.RemoveRange(existingChunkStats);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<IndexStats> GetOrCreateStatsAsync(CancellationToken cancellationToken)
+    {
+        var stats = await _dbContext.IndexStats
+            .FirstOrDefaultAsync(s => s.Id == IndexStats.SingletonId, cancellationToken);
+
+        if (stats is not null)
+        {
+            return stats;
+        }
+
+        stats = new IndexStats { Id = IndexStats.SingletonId };
+        _dbContext.IndexStats.Add(stats);
+        return stats;
     }
 
     private async Task<Dictionary<string, int>> GetOrCreateTermIdsAsync(IEnumerable<string> terms, CancellationToken cancellationToken)
