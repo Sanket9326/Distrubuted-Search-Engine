@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  labels:
+    {{- include "infra.labels" . | nindent 4 }}
+    app: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+        - name: ollama
+          image: "{{ .Values.ollama.image }}:{{ .Values.ollama.tag }}"
+          ports:
+            - containerPort: 11434
+          volumeMounts:
+            - name: data
+              mountPath: /root/.ollama
+          resources:
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  labels:
+    {{- include "infra.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: ollama
+  ports:
+    - port: 11434
+      targetPort: 11434
+      name: http
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ollama-model-pull
+  labels:
+    {{- include "infra.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: ollama-model-pull
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: pull
+          image: "{{ .Values.ollama.image }}:{{ .Values.ollama.tag }}"
+          env:
+            - name: OLLAMA_HOST
+              value: "http://ollama:11434"
+          command:
+            - sh
+            - -c
+            - |
+              until ollama list >/dev/null 2>&1; do
+                echo "waiting for ollama service..."
+                sleep 5
+              done
+              ollama pull {{ .Values.ollama.embeddingModel }}

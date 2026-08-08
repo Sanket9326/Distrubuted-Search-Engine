@@ -31,7 +31,9 @@ autoscaling:
 ingress:
   enabled: true
   className: nginx
-  host: search.example.com
+  # Local kind cluster: map this to 127.0.0.1 in your hosts file
+  # (C:\Windows\System32\drivers\etc\hosts on Windows) to reach it.
+  host: search.local
   annotations: {}
 
 # web-ui is a static Angular build served by nginx (API URLs are baked in at
