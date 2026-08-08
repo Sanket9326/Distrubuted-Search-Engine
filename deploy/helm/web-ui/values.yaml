@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/sanket9326/document-search-platform/web-ui
-  tag: latest
+  tag: "acb59d9"
   pullPolicy: IfNotPresent
 
 service:
