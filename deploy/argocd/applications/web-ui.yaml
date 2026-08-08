@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web-ui
+  namespace: argocd
+spec:
+  project: search-engine
+  source:
+    repoURL: https://github.com/Sanket9326/Distrubuted-Search-Engine.git
+    targetRevision: master
+    path: deploy/helm/web-ui
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: search-engine
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
