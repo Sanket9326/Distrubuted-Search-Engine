@@ -10,7 +10,12 @@ spec:
   destinations:
     - server: https://kubernetes.default.svc
       namespace: search-engine
-  clusterResourceWhitelist: []
+  clusterResourceWhitelist:
+    # Namespace is cluster-scoped, and Applications use CreateNamespace=true
+    # to create search-engine on first sync - everything else cluster-scoped
+    # (ClusterRole, CRDs, etc.) stays denied.
+    - group: ""
+      kind: Namespace
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"

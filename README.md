@@ -549,6 +549,13 @@ Tracked per document in `keyword_index_status`, independently of `document_metad
 # 🏗 Repository Structure
 
 ```text
+deploy
+│
+├── helm                    # One chart per service, plus an infra chart (Postgres, Kafka,
+│                            # Redis, MinIO, Qdrant, Ollama, TEI reranker) for kind
+├── argocd                  # AppProject + one Application per chart (GitOps, tracks master)
+└── kind                    # kind-config.yaml + bootstrap.ps1 (local cluster bring-up)
+
 src
 │
 ├── BuildingBlocks
@@ -619,6 +626,9 @@ src
 | UI Charts | ngx-echarts (Apache ECharts) |
 | Markdown Rendering | `marked` |
 | Containerization | Docker / Docker Compose |
+| Orchestration | Kubernetes (kind, local) |
+| Package/Templating | Helm |
+| GitOps / Continuous Deployment | ArgoCD |
 | Architecture | Microservices, event-driven |
 
 ---
@@ -775,6 +785,32 @@ Response is `{ "answer": "...", "sources": [ { "chunkId", "documentId", "fileNam
 **4. Watch it all live**
 
 Open `http://localhost:4200/metrics` for the built-in Web UI dashboard, or `http://localhost:3000` for Grafana (login `admin` / whatever you set `GRAFANA_ADMIN_PASSWORD` to, dashboard auto-provisioned). Both show live health status per service (including Reliability and Keyword Index), request rate/latency, the domain counters above (documents uploaded/ingested, chunks embedded, chunks keyword-indexed, RAG answers generated), the retry queue depth, and per-container CPU/memory/network from cAdvisor. Prometheus itself is at `http://localhost:9090` if you want to run raw PromQL queries or check `/targets` for scrape health.
+
+---
+
+# ☸️ Kubernetes Deployment (GitOps)
+
+Alongside Docker Compose, the platform can run on Kubernetes via **Helm + ArgoCD**, deployed today to a local **kind** cluster.
+
+- **Helm charts** (`deploy/helm/`) — one per service (`document-ingestion-service`, `embedding-service`, `keyword-index-service`, `reliability-service`, `search-service`, `upload-service`, `web-ui`), plus an `infra` chart (Postgres, Kafka, Redis, MinIO, Qdrant, Ollama, TEI reranker) that mirrors `docker-compose.yml` for a from-scratch kind cluster. Each service chart splits non-secret config (`ConfigMap`) from credentials (`Secret`), and ships with dev-default values (matching `.env.example`'s `changeme`/`minioadmin` placeholders) so it runs out of the box locally.
+- **ArgoCD** (`deploy/argocd/`) — an `AppProject` scoping everything to this repo and a `search-engine` namespace, plus one `Application` per chart tracking `master`, with automated sync (prune + self-heal).
+- **Local bootstrap** (`deploy/kind/`) — `kind-config.yaml` (cluster config; ingress ports are remapped to `8080`/`8443` since `80`/`443` can be blocked by Windows' reserved port ranges) and `bootstrap.ps1`, which creates the cluster, installs ingress-nginx + ArgoCD, builds/tags/loads every service image with the current git SHA, and applies the ArgoCD manifests.
+
+**Try it:**
+
+```powershell
+./deploy/kind/bootstrap.ps1
+```
+
+Then reach the Web UI either via the Ingress (add `127.0.0.1 search.local` to your hosts file, browse `http://search.local:8080`) or a quick port-forward:
+
+```bash
+kubectl port-forward -n search-engine svc/web-ui-web-ui 8081:80
+```
+
+Watch rollout status with `kubectl get applications -n argocd` (all 8 should show `Synced`/`Healthy`) and `kubectl get pods -n search-engine`.
+
+**Not yet automated:** CI/CD via GitHub Actions (`.github/workflows/ci.yaml`/`cd.yaml`) — building/pushing images to GHCR and auto-bumping each chart's `image.tag` on merge to `master` — is planned but not yet wired up. Today, new images are built and loaded into kind locally by `bootstrap.ps1`, and the ArgoCD Applications point at whatever's already on `master`.
 
 ---
 
