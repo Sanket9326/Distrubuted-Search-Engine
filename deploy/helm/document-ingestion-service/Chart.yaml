@@ -1,0 +1,6 @@
+apiVersion: v2
+name: document-ingestion-service
+description: Extracts and chunks uploaded documents, persisting chunks to Postgres and fanning out ingestion events.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

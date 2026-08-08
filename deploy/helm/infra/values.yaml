@@ -1,0 +1,95 @@
+# Local-dev infra for kind. Every component is a single replica backed by
+# emptyDir (no persistence across pod restarts) — this chart exists to give
+# the app services something to talk to on a throwaway local cluster, not to
+# be a production datastore deployment.
+
+postgres:
+  image: postgres
+  tag: 16-alpine
+  user: documentsearch
+  db: documentsearch
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+kafka:
+  image: apache/kafka
+  tag: latest
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+redis:
+  image: redis
+  tag: 7-alpine
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+minio:
+  image: minio/minio
+  tag: latest
+  rootUser: minioadmin
+  bucketName: documents
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+qdrant:
+  image: qdrant/qdrant
+  tag: latest
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+ollama:
+  image: ollama/ollama
+  tag: latest
+  embeddingModel: nomic-embed-text
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+reranker:
+  image: ghcr.io/huggingface/text-embeddings-inference
+  tag: cpu-1.9
+  modelId: BAAI/bge-reranker-v2-m3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# Sensitive configuration, mounted as env vars via a Secret.
+# Values below are the non-production local-dev defaults (see .env.example).
+# For staging/production, override with --set, a separate (gitignored)
+# values file, or an external secrets manager — do NOT reuse these values.
+secrets:
+  postgresPassword: "changeme"
+  minioRootPassword: "changeme"

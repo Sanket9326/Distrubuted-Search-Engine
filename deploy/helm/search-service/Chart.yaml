@@ -1,0 +1,6 @@
+apiVersion: v2
+name: search-service
+description: Runs hybrid vector + keyword search, re-ranks results, and generates optional RAG answers via Gemini.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

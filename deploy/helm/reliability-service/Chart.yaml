@@ -1,0 +1,6 @@
+apiVersion: v2
+name: reliability-service
+description: Handles Redis-backed retry queues and Kafka dead-letter topics for failed message processing.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reranker
+  labels:
+    {{- include "infra.labels" . | nindent 4 }}
+    app: reranker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reranker
+  template:
+    metadata:
+      labels:
+        app: reranker
+    spec:
+      containers:
+        - name: reranker
+          image: "{{ .Values.reranker.image }}:{{ .Values.reranker.tag }}"
+          args: ["--model-id", "{{ .Values.reranker.modelId }}"]
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.reranker.resources | nindent 12 }}
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reranker
+  labels:
+    {{- include "infra.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: reranker
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http

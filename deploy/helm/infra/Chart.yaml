@@ -1,0 +1,6 @@
+apiVersion: v2
+name: infra
+description: Local-dev infrastructure dependencies (Postgres, Kafka, Redis, Minio, Qdrant, Ollama, reranker) for the Distributed Search Engine, mirroring docker-compose.yml for use in kind.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

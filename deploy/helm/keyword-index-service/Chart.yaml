@@ -1,0 +1,6 @@
+apiVersion: v2
+name: keyword-index-service
+description: Builds and maintains a custom inverted index and BM25 statistics in Postgres for keyword search.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

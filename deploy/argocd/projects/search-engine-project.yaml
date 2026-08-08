@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: search-engine
+  namespace: argocd
+spec:
+  description: Distributed Search Engine microservices (monorepo)
+  sourceRepos:
+    - https://github.com/Sanket9326/Distrubuted-Search-Engine.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: search-engine
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
