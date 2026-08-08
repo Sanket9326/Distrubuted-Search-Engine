@@ -1,0 +1,40 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/sanket9326/document-search-platform/web-ui
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+probes:
+  readinessPath: /health
+  livenessPath: /health
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+
+ingress:
+  enabled: true
+  className: nginx
+  host: search.example.com
+  annotations: {}
+
+# web-ui is a static Angular build served by nginx (API URLs are baked in at
+# build time) — no runtime env vars are needed, so no ConfigMap/Secret is rendered.
+config: {}
+secrets: {}

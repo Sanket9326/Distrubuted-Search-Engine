@@ -1,0 +1,49 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/sanket9326/document-search-platform/embedding-service
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+probes:
+  readinessPath: /health
+  livenessPath: /health/live
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+
+# Non-secret configuration, mounted as env vars via a ConfigMap.
+config:
+  ASPNETCORE_ENVIRONMENT: Production
+  DOTNET_ENVIRONMENT: Production
+  Kafka__BootstrapServers: kafka:29092
+  Kafka__GroupId: embedding-service
+  Qdrant__Endpoint: qdrant
+  Qdrant__Port: "6334"
+  Qdrant__CollectionName: document_chunks
+  Ollama__Endpoint: http://ollama:11434
+  Ollama__Model: nomic-embed-text
+  Redis__ConnectionString: redis:6379
+
+# Sensitive configuration, mounted as env vars via a Secret.
+# Value below is the non-production local-dev default (see .env.example).
+# For staging/production, override with --set, a separate (gitignored)
+# values file, or an external secrets manager — do NOT reuse this value.
+secrets:
+  Postgres__ConnectionString: "Host=postgres;Port=5432;Database=documentsearch;Username=documentsearch;Password=changeme"

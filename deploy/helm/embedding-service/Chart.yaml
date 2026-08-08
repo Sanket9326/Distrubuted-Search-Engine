@@ -1,0 +1,6 @@
+apiVersion: v2
+name: embedding-service
+description: Generates vector embeddings for document chunks via Ollama and stores them in Qdrant.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
