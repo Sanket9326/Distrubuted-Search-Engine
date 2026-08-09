@@ -82,7 +82,7 @@ foreach ($svc in $services) {
     kind load docker-image $image --name $ClusterName
 
     Write-Host "== Updating $valuesPath image.tag -> $Sha" -ForegroundColor Cyan
-    (Get-Content $valuesPath -Raw) -replace "(?m)^(\s*tag:\s*)latest\s*$", "`${1}`"$Sha`"" |
+    (Get-Content $valuesPath -Raw) -replace "(?m)^(\s*tag:\s*)`"?[\w.\-]+`"?\s*$", "`${1}`"$Sha`"" |
         Set-Content -Path $valuesPath -NoNewline
 }
 
