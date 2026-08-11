@@ -77,7 +77,10 @@ ollama:
 reranker:
   image: ghcr.io/huggingface/text-embeddings-inference
   tag: cpu-1.9
-  modelId: BAAI/bge-reranker-v2-m3
+  # Use a compact TEI text-ranking model for the CPU-only local Kind cluster.
+  # The upstream BAAI model requires large artifacts that make local startup
+  # unreliable and can leave dependent services unready for several minutes.
+  modelId: cross-encoder/ms-marco-MiniLM-L-6-v2
   resources:
     requests:
       cpu: 250m

@@ -20,15 +20,15 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
-          {{- if or .Values.config .Values.secrets }}
+          {{- if or .Values.config .Values.secrets .Values.existingSecret }}
           envFrom:
             {{- if .Values.config }}
             - configMapRef:
                 name: {{ include "search-service.fullname" . }}
             {{- end }}
-            {{- if .Values.secrets }}
+            {{- if or .Values.secrets .Values.existingSecret }}
             - secretRef:
-                name: {{ include "search-service.fullname" . }}
+                name: {{ default (include "search-service.fullname" .) .Values.existingSecret }}
             {{- end }}
           {{- end }}
           readinessProbe:
