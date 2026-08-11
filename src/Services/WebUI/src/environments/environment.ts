@@ -1,6 +1,9 @@
 export const environment = {
   production: true,
-  uploadServiceUrl: 'http://localhost:8080',
-  searchServiceUrl: 'http://localhost:8081',
+  // The browser reaches the cluster through the Web UI origin. Nginx proxies
+  // these paths to the internal Kubernetes services, so localhost is not
+  // used from the user's machine.
+  uploadServiceUrl: '',
+  searchServiceUrl: '',
   prometheusUrl: '/prometheus'
 };
