@@ -104,8 +104,43 @@ try {
 
 # 6. Apply ArgoCD project + applications
 Write-Host "== Applying ArgoCD project and applications..." -ForegroundColor Cyan
+
+# Keep local credentials out of Git-managed Helm values. If .env contains a
+# Gemini key, create/update the runtime-only Secret before ArgoCD syncs the
+# search service. The chart references this Secret through existingSecret.
+$envFile = Join-Path $RepoRoot ".env"
+if (Test-Path $envFile) {
+    $geminiKey = ((Get-Content $envFile | Where-Object { $_ -match '^GEMINI_API_KEY=' } | Select-Object -First 1) -replace '^GEMINI_API_KEY=', '').Trim()
+    if ($geminiKey) {
+        kubectl create secret generic search-service-runtime-secrets -n search-engine `
+            --from-literal="Gemini__ApiKey=$geminiKey" `
+            --from-literal='Postgres__ConnectionString=Host=postgres;Port=5432;Database=documentsearch;Username=documentsearch;Password=changeme' `
+            --dry-run=client -o yaml | kubectl apply -f -
+    }
+}
+
 kubectl apply -f "$RepoRoot\deploy\argocd\projects\search-engine-project.yaml"
 kubectl apply -f "$RepoRoot\deploy\argocd\applications\"
+
+# ArgoCD tracks origin/master, while the images above were built locally and
+# loaded directly into kind. Set the image tag as an ArgoCD Helm parameter so
+# a stale tag from the remote branch cannot leave an old ReplicaSet in
+# ImagePullBackOff. The parameter is safe to reapply on every bootstrap run.
+foreach ($svc in $services) {
+    $parameter = @{ name = "image.tag"; value = $Sha }
+    $parameters = @($parameter)
+    if ($svc.Chart -eq "search-service") {
+        $parameters += @{ name = "existingSecret"; value = "search-service-runtime-secrets" }
+    }
+    $patch = @{ spec = @{ source = @{ helm = @{ parameters = $parameters } } } } |
+        ConvertTo-Json -Depth 10 -Compress
+    kubectl -n argocd patch application $svc.Chart --type merge -p $patch
+}
+
+Write-Host "== Waiting for local application rollouts..." -ForegroundColor Cyan
+foreach ($svc in $services) {
+    kubectl -n search-engine rollout status "deployment/$($svc.Chart)-$($svc.Chart)" --timeout=300s
+}
 
 Write-Host "== Done. Push the commit above to master, then watch sync status with:" -ForegroundColor Cyan
 Write-Host "     kubectl get applications -n argocd -w" -ForegroundColor Cyan

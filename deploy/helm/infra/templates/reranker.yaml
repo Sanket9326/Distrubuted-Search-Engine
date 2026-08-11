@@ -21,6 +21,23 @@ spec:
           args: ["--model-id", "{{ .Values.reranker.modelId }}"]
           ports:
             - containerPort: 80
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 80
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 20
           volumeMounts:
             - name: data
               mountPath: /data

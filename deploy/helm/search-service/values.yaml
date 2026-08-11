@@ -50,3 +50,7 @@ config:
 secrets:
   Gemini__ApiKey: ""
   Postgres__ConnectionString: "Host=postgres;Port=5432;Database=documentsearch;Username=documentsearch;Password=changeme"
+
+# Set by local Kind bootstrap or an external secret manager. When populated,
+# the chart references this Secret and does not manage or overwrite it.
+existingSecret: ""

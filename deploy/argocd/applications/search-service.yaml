@@ -12,6 +12,9 @@ spec:
     helm:
       valueFiles:
         - values.yaml
+      parameters:
+        - name: existingSecret
+          value: search-service-runtime-secrets
   destination:
     server: https://kubernetes.default.svc
     namespace: search-engine
