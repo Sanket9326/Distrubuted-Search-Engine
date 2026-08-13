@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    name: .NET tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.301
+
+      - name: Restore dependencies
+        run: dotnet restore DocumentSearchPlatform.sln
+
+      - name: Run tests
+        run: dotnet test DocumentSearchPlatform.sln --configuration Release --no-restore --verbosity normal
+
+  web-ui:
+    name: Web UI build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Services/WebUI/package-lock.json
+
+      - name: Install dependencies
+        working-directory: src/Services/WebUI
+        run: npm ci
+
+      - name: Build Web UI
+        working-directory: src/Services/WebUI
+        run: npm run build -- --configuration production
+
+  docker-build:
+    name: Build ${{ matrix.service }} image
+    needs:
+      - dotnet
+      - web-ui
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: document-ingestion-service
+            dockerfile: src/Services/DocumentIngestionService/Dockerfile
+          - service: embedding-service
+            dockerfile: src/Services/EmbeddingService/Dockerfile
+          - service: keyword-index-service
+            dockerfile: src/Services/KeywordIndexService/Dockerfile
+          - service: reliability-service
+            dockerfile: src/Services/ReliabilityService/Dockerfile
+          - service: search-service
+            dockerfile: src/Services/SearchService/Dockerfile
+          - service: upload-service
+            dockerfile: src/Services/UploadService/Dockerfile
+          - service: web-ui
+            dockerfile: src/Services/WebUI/Dockerfile
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image without publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: local/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=ci-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.service }}

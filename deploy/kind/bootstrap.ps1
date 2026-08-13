@@ -6,15 +6,24 @@
   1. Creates the kind cluster (deploy/kind/kind-config.yaml).
   2. Installs ingress-nginx (kind-specific manifest) and waits for it to be ready.
   3. Installs ArgoCD into the argocd namespace and waits for it to be ready.
-  4. Builds every service's Docker image locally, tags it with the short git SHA,
-     and loads it into the kind cluster (no registry round-trip).
-  5. Rewrites each chart's values.yaml image.tag to that SHA and commits the change
-     locally — it does NOT push. Review the diff and push it yourself so ArgoCD
-     (which tracks origin/master) can pick it up.
+  4. By default, builds every service's Docker image locally, tags it with the short
+     git SHA, and loads it into the kind cluster (no registry round-trip).
+  5. By default, rewrites each chart's values.yaml image.tag to that SHA and commits
+     the change locally — it does NOT push. Review the diff and push it yourself so
+     ArgoCD (which tracks origin/master) can pick it up.
   6. Applies the ArgoCD AppProject and all Applications.
+
+  Use -UseRegistryImages to skip local image builds and use the image tags already
+  committed to master by GitHub Actions. This mode is useful for validating the
+  GHCR-based automated flow on a local kind cluster.
 
   Safe to re-run: cluster/namespace/install steps are idempotent.
 #>
+
+[CmdletBinding()]
+param(
+    [switch]$UseRegistryImages
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -59,7 +68,7 @@ if ($adminPasswordB64) {
     Write-Host "== ArgoCD admin secret not found (already rotated?) - skipping password print." -ForegroundColor Yellow
 }
 
-# 4. Build, tag, and load each service image
+# 4. Build, tag, and load each service image unless registry mode was requested
 $services = @(
     @{ Chart = "document-ingestion-service"; Dockerfile = "src\Services\DocumentIngestionService\Dockerfile" },
     @{ Chart = "embedding-service";          Dockerfile = "src\Services\EmbeddingService\Dockerfile" },
@@ -70,36 +79,41 @@ $services = @(
     @{ Chart = "web-ui";                     Dockerfile = "src\Services\WebUI\Dockerfile" }
 )
 
-foreach ($svc in $services) {
-    $valuesPath = Join-Path $RepoRoot "deploy\helm\$($svc.Chart)\values.yaml"
-    $repository = (Select-String -Path $valuesPath -Pattern "^\s*repository:\s*(\S+)").Matches[0].Groups[1].Value
-    $image = "${repository}:${Sha}"
+if ($UseRegistryImages) {
+    Write-Host "== Registry mode enabled: skipping local image builds and Helm tag commits." -ForegroundColor Yellow
+    Write-Host "   ArgoCD will use the image tags committed to origin/master by GitHub Actions." -ForegroundColor Yellow
+} else {
+    foreach ($svc in $services) {
+        $valuesPath = Join-Path $RepoRoot "deploy\helm\$($svc.Chart)\values.yaml"
+        $repository = (Select-String -Path $valuesPath -Pattern "^\s*repository:\s*(\S+)").Matches[0].Groups[1].Value
+        $image = "${repository}:${Sha}"
 
-    Write-Host "== Building $image..." -ForegroundColor Cyan
-    docker build -f (Join-Path $RepoRoot $svc.Dockerfile) -t $image $RepoRoot
+        Write-Host "== Building $image..." -ForegroundColor Cyan
+        docker build -f (Join-Path $RepoRoot $svc.Dockerfile) -t $image $RepoRoot
 
-    Write-Host "== Loading $image into kind cluster '$ClusterName'..." -ForegroundColor Cyan
-    kind load docker-image $image --name $ClusterName
+        Write-Host "== Loading $image into kind cluster '$ClusterName'..." -ForegroundColor Cyan
+        kind load docker-image $image --name $ClusterName
 
-    Write-Host "== Updating $valuesPath image.tag -> $Sha" -ForegroundColor Cyan
-    (Get-Content $valuesPath -Raw) -replace "(?m)^(\s*tag:\s*)`"?[\w.\-]+`"?\s*$", "`${1}`"$Sha`"" |
-        Set-Content -Path $valuesPath -NoNewline
-}
-
-# 5. Commit locally (does NOT push — review and push yourself)
-Push-Location $RepoRoot
-try {
-    git add deploy/helm/*/values.yaml
-    $staged = git diff --cached --name-only
-    if ($staged) {
-        git commit -m "chore: bump local kind image tags to $Sha"
-        Write-Host "== Committed image tag bump locally. Review with 'git show' then push:" -ForegroundColor Green
-        Write-Host "     git push origin <your-branch>   (then merge to master for ArgoCD to sync)" -ForegroundColor Green
-    } else {
-        Write-Host "== No image.tag changes to commit (already at $Sha?)." -ForegroundColor Yellow
+        Write-Host "== Updating $valuesPath image.tag -> $Sha" -ForegroundColor Cyan
+        (Get-Content $valuesPath -Raw) -replace "(?m)^(\s*tag:\s*)`"?[\w.\-]+`"?\s*$", "`${1}`"$Sha`"" |
+            Set-Content -Path $valuesPath -NoNewline
     }
-} finally {
-    Pop-Location
+
+    # 5. Commit locally (does NOT push — review and push yourself)
+    Push-Location $RepoRoot
+    try {
+        git add deploy/helm/*/values.yaml
+        $staged = git diff --cached --name-only
+        if ($staged) {
+            git commit -m "chore: bump local kind image tags to $Sha"
+            Write-Host "== Committed image tag bump locally. Review with 'git show' then push:" -ForegroundColor Green
+            Write-Host "     git push origin <your-branch>   (then merge to master for ArgoCD to sync)" -ForegroundColor Green
+        } else {
+            Write-Host "== No image.tag changes to commit (already at $Sha?)." -ForegroundColor Yellow
+        }
+    } finally {
+        Pop-Location
+    }
 }
 
 # 6. Apply ArgoCD project + applications
@@ -122,13 +136,15 @@ if (Test-Path $envFile) {
 kubectl apply -f "$RepoRoot\deploy\argocd\projects\search-engine-project.yaml"
 kubectl apply -f "$RepoRoot\deploy\argocd\applications\"
 
-# ArgoCD tracks origin/master, while the images above were built locally and
-# loaded directly into kind. Set the image tag as an ArgoCD Helm parameter so
-# a stale tag from the remote branch cannot leave an old ReplicaSet in
-# ImagePullBackOff. The parameter is safe to reapply on every bootstrap run.
+# In local mode, ArgoCD tracks origin/master but the images above were built locally
+# and loaded directly into kind. Set the image tag as an ArgoCD Helm parameter so
+# a stale remote tag cannot leave an old ReplicaSet in ImagePullBackOff.
+# In registry mode, remove the local override and use the tags from master.
 foreach ($svc in $services) {
-    $parameter = @{ name = "image.tag"; value = $Sha }
-    $parameters = @($parameter)
+    $parameters = @()
+    if (-not $UseRegistryImages) {
+        $parameters += @{ name = "image.tag"; value = $Sha }
+    }
     if ($svc.Chart -eq "search-service") {
         $parameters += @{ name = "existingSecret"; value = "search-service-runtime-secrets" }
     }
@@ -142,5 +158,9 @@ foreach ($svc in $services) {
     kubectl -n search-engine rollout status "deployment/$($svc.Chart)-$($svc.Chart)" --timeout=300s
 }
 
-Write-Host "== Done. Push the commit above to master, then watch sync status with:" -ForegroundColor Cyan
+if ($UseRegistryImages) {
+    Write-Host "== Done. Registry images are managed by GitHub Actions; watch sync status with:" -ForegroundColor Cyan
+} else {
+    Write-Host "== Done. Push the commit above to master, then watch sync status with:" -ForegroundColor Cyan
+}
 Write-Host "     kubectl get applications -n argocd -w" -ForegroundColor Cyan
