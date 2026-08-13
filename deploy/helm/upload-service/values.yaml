@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/sanket9326/document-search-platform/upload-service
-  tag: "fd31c18"
+  tag: "f50a1c34a2ae12357af152ffe0bf7a2c3ed503c5"
   pullPolicy: IfNotPresent
 
 service:
