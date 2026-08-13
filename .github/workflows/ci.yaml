@@ -7,6 +7,10 @@ on:
   push:
     branches:
       - master
+    # The CD workflow commits only Helm image-tag changes back to master.
+    # Do not rebuild and republish images for that GitOps-only commit.
+    paths-ignore:
+      - deploy/helm/**
   workflow_dispatch:
 
 permissions:
