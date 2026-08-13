@@ -794,7 +794,7 @@ Alongside Docker Compose, the platform can run on Kubernetes via **Helm + ArgoCD
 
 - **Helm charts** (`deploy/helm/`) — one per service (`document-ingestion-service`, `embedding-service`, `keyword-index-service`, `reliability-service`, `search-service`, `upload-service`, `web-ui`), plus an `infra` chart (Postgres, Kafka, Redis, MinIO, Qdrant, Ollama, TEI reranker) that mirrors `docker-compose.yml` for a from-scratch kind cluster. Each service chart splits non-secret config (`ConfigMap`) from credentials (`Secret`), and ships with dev-default values (matching `.env.example`'s `changeme`/`minioadmin` placeholders) so it runs out of the box locally.
 - **ArgoCD** (`deploy/argocd/`) — an `AppProject` scoping everything to this repo and a `search-engine` namespace, plus one `Application` per chart tracking `master`, with automated sync (prune + self-heal).
-- **Local bootstrap** (`deploy/kind/`) — `kind-config.yaml` (cluster config; ingress ports are remapped to `8080`/`8443` since `80`/`443` can be blocked by Windows' reserved port ranges) and `bootstrap.ps1`, which creates the cluster, installs ingress-nginx + ArgoCD, builds/tags/loads every service image with the current git SHA, and applies the ArgoCD manifests.
+- **Local bootstrap** (`deploy/kind/`) — `kind-config.yaml` (cluster config; ingress ports are remapped to `8080`/`8443` since `80`/`443` can be blocked by Windows' reserved port ranges) and `bootstrap.ps1`, which creates the cluster, installs ingress-nginx + ArgoCD, builds/tags/loads every service image with the current git SHA, and applies the ArgoCD manifests. Use `./deploy/kind/bootstrap.ps1 -UseRegistryImages` to skip local builds and use the image tags committed to `master` by GitHub Actions.
 
 **Try it:**
 
@@ -810,7 +810,7 @@ kubectl port-forward -n search-engine svc/web-ui-web-ui 8081:80
 
 Watch rollout status with `kubectl get applications -n argocd` (all 8 should show `Synced`/`Healthy`) and `kubectl get pods -n search-engine`.
 
-**Not yet automated:** CI/CD via GitHub Actions (`.github/workflows/ci.yaml`/`cd.yaml`) — building/pushing images to GHCR and auto-bumping each chart's `image.tag` on merge to `master` — is planned but not yet wired up. Today, new images are built and loaded into kind locally by `bootstrap.ps1`, and the ArgoCD Applications point at whatever's already on `master`.
+**Automated CI/CD:** `.github/workflows/ci.yaml` runs .NET tests, builds the Web UI, and builds all service images for pull requests and pushes to `master`. After successful CI on `master`, `.github/workflows/cd.yaml` publishes the seven application images to GHCR using the full commit SHA as the tag, updates each chart's `image.tag`, and pushes that GitOps commit back to `master`. ArgoCD then detects the Helm change and synchronizes the cluster. The GHCR packages must be made public after their first publication if the cluster should pull them without an image-pull secret.
 
 ---
 
