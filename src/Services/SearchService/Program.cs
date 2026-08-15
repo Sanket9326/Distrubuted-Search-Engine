@@ -17,6 +17,7 @@ using Services.Prompting;
 using Services.ReRanking;
 using Services.VectorSearch;
 
+// Test line
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSerilog((services, cfg) => cfg
