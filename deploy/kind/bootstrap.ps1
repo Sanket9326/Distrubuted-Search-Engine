@@ -5,13 +5,14 @@
 .DESCRIPTION
   1. Creates the kind cluster (deploy/kind/kind-config.yaml).
   2. Installs ingress-nginx (kind-specific manifest) and waits for it to be ready.
-  3. Installs ArgoCD into the argocd namespace and waits for it to be ready.
-  4. By default, builds every service's Docker image locally, tags it with the short
+  3. Installs Metrics Server so local HorizontalPodAutoscalers can report healthy.
+  4. Installs ArgoCD into the argocd namespace and waits for it to be ready.
+  5. By default, builds every service's Docker image locally, tags it with the short
      git SHA, and loads it into the kind cluster (no registry round-trip).
-  5. By default, rewrites each chart's values.yaml image.tag to that SHA and commits
+  6. By default, rewrites each chart's values.yaml image.tag to that SHA and commits
      the change locally — it does NOT push. Review the diff and push it yourself so
      ArgoCD (which tracks origin/master) can pick it up.
-  6. Applies the ArgoCD AppProject and all Applications.
+  7. Applies the ArgoCD AppProject and all Applications.
 
   Use -UseRegistryImages to skip local image builds and use the image tags already
   committed to master by GitHub Actions. This mode is useful for validating the
@@ -59,7 +60,16 @@ kubectl wait --namespace ingress-nginx `
     --for=condition=available deployment/ingress-nginx-controller `
     --timeout=180s
 
-# 3. Install ArgoCD
+# 3. Install Metrics Server for HorizontalPodAutoscalers.
+# kind kubelets use certificates whose IP SANs cannot be verified by Metrics
+# Server, so the local-only insecure TLS flag is required.
+Write-Host "== Installing Metrics Server..." -ForegroundColor Cyan
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl -n kube-system patch deployment metrics-server --type=json `
+    -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl rollout status deployment/metrics-server -n kube-system --timeout=180s
+
+# 4. Install ArgoCD
 Write-Host "== Installing ArgoCD..." -ForegroundColor Cyan
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 # ArgoCD's ApplicationSet CRD is larger than Kubernetes' 256 KiB
@@ -79,7 +89,7 @@ if ($adminPasswordB64) {
     Write-Host "== ArgoCD admin secret not found (already rotated?) - skipping password print." -ForegroundColor Yellow
 }
 
-# 4. Build, tag, and load each service image unless registry mode was requested
+# 5. Build, tag, and load each service image unless registry mode was requested
 $services = @(
     @{ Chart = "document-ingestion-service"; Dockerfile = "src\Services\DocumentIngestionService\Dockerfile" },
     @{ Chart = "embedding-service";          Dockerfile = "src\Services\EmbeddingService\Dockerfile" },
@@ -110,7 +120,7 @@ if ($UseRegistryImages) {
             Set-Content -Path $valuesPath -NoNewline
     }
 
-    # 5. Commit locally (does NOT push — review and push yourself)
+    # 6. Commit locally (does NOT push — review and push yourself)
     Push-Location $RepoRoot
     try {
         git add deploy/helm/*/values.yaml
@@ -127,8 +137,13 @@ if ($UseRegistryImages) {
     }
 }
 
-# 6. Apply ArgoCD project + applications
+# 7. Apply ArgoCD project + applications
 Write-Host "== Applying ArgoCD project and applications..." -ForegroundColor Cyan
+
+# The Search Service runtime secret must exist before ArgoCD creates the
+# Application destination namespace. Create the namespace explicitly so a
+# first bootstrap can reliably install the secret from .env.
+kubectl create namespace search-engine --dry-run=client -o yaml | kubectl apply -f -
 
 # Keep local credentials out of Git-managed Helm values. If .env contains a
 # Gemini key, create/update the runtime-only Secret before ArgoCD syncs the
@@ -165,8 +180,38 @@ foreach ($svc in $services) {
 }
 
 Write-Host "== Waiting for local application rollouts..." -ForegroundColor Cyan
+
+# ArgoCD creates the Deployments asynchronously after its Application resources
+# are applied. Wait for each Deployment to exist before asking kubectl for its
+# rollout status, otherwise a freshly created cluster reports a misleading
+# NotFound error even though reconciliation is still in progress.
+function Wait-ForDeployment {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [int]$TimeoutSeconds = 180
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $deployment = kubectl get deployment $Name -n search-engine -o name 2>$null
+        if ($LASTEXITCODE -eq 0 -and $deployment) {
+            return $true
+        }
+
+        Start-Sleep -Seconds 5
+    } while ((Get-Date) -lt $deadline)
+
+    return $false
+}
+
 foreach ($svc in $services) {
-    kubectl -n search-engine rollout status "deployment/$($svc.Chart)-$($svc.Chart)" --timeout=300s
+    $deploymentName = "$($svc.Chart)-$($svc.Chart)"
+    if (Wait-ForDeployment -Name $deploymentName) {
+        kubectl -n search-engine rollout status "deployment/$deploymentName" --timeout=300s
+    } else {
+        Write-Warning "Deployment '$deploymentName' was not created by ArgoCD within 180 seconds."
+    }
 }
 
 if ($UseRegistryImages) {

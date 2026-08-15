@@ -13,6 +13,10 @@ service:
 probes:
   readinessPath: /health
   livenessPath: /health/live
+  # On a new cluster, Ollama downloads nomic-embed-text while this service
+  # starts. Allow up to 15 minutes before liveness checking begins.
+  startupFailureThreshold: 180
+  startupPeriodSeconds: 5
 
 resources:
   requests:

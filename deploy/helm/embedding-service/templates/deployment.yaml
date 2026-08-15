@@ -20,6 +20,12 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.livenessPath }}
+              port: {{ .Values.service.targetPort }}
+            failureThreshold: {{ .Values.probes.startupFailureThreshold }}
+            periodSeconds: {{ .Values.probes.startupPeriodSeconds }}
           {{- if or .Values.config .Values.secrets }}
           envFrom:
             {{- if .Values.config }}
