@@ -1,6 +1,8 @@
 # Distributed Search Engine
 
-[![CI](https://github.com/Sanket9326/Distributed-Search-Engine/actions/workflows/ci.yaml/badge.svg)](https://github.com/Sanket9326/Distributed-Search-Engine/actions/workflows/ci.yaml)
+[![CI](https://github.com/Sanket9326/Distrubuted-Search-Engine/actions/workflows/ci.yaml/badge.svg)](https://github.com/Sanket9326/Distrubuted-Search-Engine/actions/workflows/ci.yaml)
+[![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-Helm%20%2B%20Argo%20CD-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 
 A production-inspired, event-driven search platform built with .NET. It accepts documents, processes them asynchronously, and provides department-aware hybrid search and grounded RAG answers.
 
@@ -15,12 +17,32 @@ A production-inspired, event-driven search platform built with .NET. It accepts 
 
 ## Architecture
 
-```text
-Browser → Upload Service → MinIO → Kafka → Document Ingestion → PostgreSQL
-                                                ├─→ Embedding Service → Ollama → Qdrant
-                                                └─→ Keyword Index Service → PostgreSQL (BM25)
+```mermaid
+flowchart LR
+    Client[Browser] --> UI[Angular Web UI]
+    UI --> Upload[Upload Service]
+    Upload --> MinIO[(MinIO)]
+    Upload --> Kafka{{Kafka}}
+    Kafka --> Ingest[Document Ingestion]
+    Ingest --> Postgres[(PostgreSQL)]
+    Ingest --> Embed[Embedding Service]
+    Ingest --> Index[Keyword Index Service]
+    Embed --> Ollama[Ollama]
+    Embed --> Qdrant[(Qdrant)]
+    Index --> Postgres
 
-Browser → Search Service → parallel vector + keyword retrieval → TEI reranker → Gemini (optional)
+    UI --> Search[Search Service]
+    Search --> Ollama
+    Search --> Qdrant
+    Search --> Postgres
+    Search --> Reranker[TEI Reranker]
+    Reranker --> Gemini[Gemini]
+
+    Ingest -. retries .-> Redis[(Redis)]
+    Embed -. retries .-> Redis
+    Index -. retries .-> Redis
+    Redis --> Reliability[Reliability Service]
+    Reliability --> Kafka
 ```
 
 Failures in ingestion, embedding, and indexing are scheduled in Redis and retried by the Reliability Service. Messages that exceed the retry limit are sent to Kafka dead-letter topics.
