@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/sanket9326/document-search-platform/web-ui
-  tag: "5340e7c9af059fc6059504a64b707bd7ee29bc6c"
+  tag: "6757007780916b91eb670abe9cb90164e7522869"
   pullPolicy: IfNotPresent
 
 service:
