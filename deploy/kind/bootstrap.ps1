@@ -56,14 +56,16 @@ if ($existingClusters -notcontains $ClusterName) {
 Write-Host "== Installing ingress-nginx..." -ForegroundColor Cyan
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
 kubectl wait --namespace ingress-nginx `
-    --for=condition=ready pod `
-    --selector=app.kubernetes.io/component=controller `
+    --for=condition=available deployment/ingress-nginx-controller `
     --timeout=180s
 
 # 3. Install ArgoCD
 Write-Host "== Installing ArgoCD..." -ForegroundColor Cyan
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+# ArgoCD's ApplicationSet CRD is larger than Kubernetes' 256 KiB
+# last-applied-configuration annotation limit. Server-side apply avoids that
+# client-side annotation and still allows this install step to be re-run.
+kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl wait --namespace argocd `
     --for=condition=available deployment/argocd-server `
     --timeout=300s
