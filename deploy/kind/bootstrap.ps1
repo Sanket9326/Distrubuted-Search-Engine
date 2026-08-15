@@ -17,12 +17,15 @@
   committed to master by GitHub Actions. This mode is useful for validating the
   GHCR-based automated flow on a local kind cluster.
 
-  Safe to re-run: cluster/namespace/install steps are idempotent.
+  Safe to re-run: cluster/namespace/install steps are idempotent. Use -Recreate
+  to remove and rebuild the named local kind cluster when its pods or ArgoCD
+  components are stuck after a Docker Desktop or WSL restart.
 #>
 
 [CmdletBinding()]
 param(
-    [switch]$UseRegistryImages
+    [switch]$UseRegistryImages,
+    [switch]$Recreate
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,6 +39,12 @@ Write-Host "== Image tag for this run: $Sha" -ForegroundColor Cyan
 
 # 1. Create the kind cluster
 $existingClusters = kind get clusters 2>$null
+if ($Recreate -and $existingClusters -contains $ClusterName) {
+    Write-Host "== Recreating kind cluster '$ClusterName'..." -ForegroundColor Yellow
+    kind delete cluster --name $ClusterName
+    $existingClusters = @()
+}
+
 if ($existingClusters -notcontains $ClusterName) {
     Write-Host "== Creating kind cluster '$ClusterName'..." -ForegroundColor Cyan
     kind create cluster --config "$RepoRoot\deploy\kind\kind-config.yaml"

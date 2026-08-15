@@ -15,6 +15,10 @@ spec:
       labels:
         app: reranker
     spec:
+      # TEI reads PROMETHEUS_PORT as a numeric CLI setting.  Kubernetes service
+      # links would inject it as e.g. tcp://<service-ip>:9090 because this chart
+      # also creates a Prometheus Service, causing TEI to exit during startup.
+      enableServiceLinks: false
       containers:
         - name: reranker
           image: "{{ .Values.reranker.image }}:{{ .Values.reranker.tag }}"
