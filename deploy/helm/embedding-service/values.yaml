@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/sanket9326/document-search-platform/embedding-service
-  tag: "18dac97537221c74dd14a54c99146104b511bdf8"
+  tag: "97db0d672b1292c371f25ae71e623badc178c9b8"
   pullPolicy: IfNotPresent
 
 service:
