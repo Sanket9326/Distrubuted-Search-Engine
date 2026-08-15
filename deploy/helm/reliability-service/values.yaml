@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/sanket9326/document-search-platform/reliability-service
-  tag: "6757007780916b91eb670abe9cb90164e7522869"
+  tag: "18dac97537221c74dd14a54c99146104b511bdf8"
   pullPolicy: IfNotPresent
 
 service:
